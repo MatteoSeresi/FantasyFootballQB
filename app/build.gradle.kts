@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+
 }
 
 android {
@@ -39,7 +40,10 @@ android {
     buildFeatures {
         compose = true
     }
+
 }
+
+apply(plugin = "com.google.gms.google-services")
 
 dependencies {
     implementation(libs.androidx.core.ktx)
@@ -54,6 +58,14 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.0")
     // Icone estese
     implementation("androidx.compose.material:material-icons-extended:1.6.0")
+    //Firebase
+    implementation(platform("com.google.firebase:firebase-bom:34.6.0"))
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-auth")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+    // ViewModel
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "932733956264",
+    "project_id": "fantasyfootball-5cb45",
+    "storage_bucket": "fantasyfootball-5cb45.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:932733956264:android:cbfab3d5644a501bb5929d",
+        "android_client_info": {
+          "package_name": "com.example.fantasyfootballqb"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCVx5T-YvQwzZjHoIBktKz26cq4Gbg0-Co"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

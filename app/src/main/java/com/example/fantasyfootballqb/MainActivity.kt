@@ -17,10 +17,13 @@ import com.example.fantasyfootballqb.ui.NavGraph
 import com.example.fantasyfootballqb.ui.components.BottomBar
 import com.example.fantasyfootballqb.navigation.Routes
 import com.example.fantasyfootballqb.ui.theme.FantasyFootballTheme
+import com.google.firebase.FirebaseApp
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        FirebaseApp.initializeApp(this)
+
         setContent {
             FantasyFootballTheme {
                 FantasyApp()
@@ -28,6 +31,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
 
 @Composable
 fun FantasyApp() {

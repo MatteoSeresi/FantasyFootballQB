@@ -11,6 +11,6 @@ sealed class Routes(val route: String, val title: String, val icon: ImageVector?
     object Team : Routes("team", "Team", Icons.Default.SportsFootball)
     object Calendar : Routes("calendar", "Games", Icons.Default.CalendarToday)
     object Stats : Routes("stats", "Stats", Icons.Default.BarChart)
-    object Ranking : Routes("ranking", "Rankings", Icons.Default.EmojiEvents)
-    object Profile : Routes("profile", "Profilo", Icons.Default.Person)
+    object Ranking : Routes("ranking", "Ranks", Icons.Default.EmojiEvents)
+    object Profile : Routes("profile", "Profile", Icons.Default.Person)
 }

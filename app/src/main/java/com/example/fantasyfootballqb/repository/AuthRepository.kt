@@ -11,16 +11,16 @@ class AuthRepository {
 
     suspend fun register(email: String, password: String, username: String): Result<String> {
         return try {
-            val authResult: AuthResult = auth.createUserWithEmailAndPassword(email, password).await()
+            val authResult = auth.createUserWithEmailAndPassword(email, password).await()
             val uid = authResult.user?.uid ?: return Result.failure(Exception("UID non disponibile"))
 
-            // crea il documento users/{uid} (le regole lo permettono perché request.auth.uid == uid)
             val userMap = mapOf(
                 "email" to email,
                 "username" to username,
                 "nomeTeam" to "",
                 "isAdmin" to false
             )
+
             db.collection("users").document(uid).set(userMap).await()
 
             Result.success(uid)
@@ -28,6 +28,7 @@ class AuthRepository {
             Result.failure(e)
         }
     }
+
 
     suspend fun login(email: String, password: String): Result<String> {
         return try {

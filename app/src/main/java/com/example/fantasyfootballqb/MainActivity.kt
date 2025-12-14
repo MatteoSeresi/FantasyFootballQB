@@ -18,6 +18,8 @@ import com.example.fantasyfootballqb.ui.components.BottomBar
 import com.example.fantasyfootballqb.navigation.Routes
 import com.example.fantasyfootballqb.ui.theme.FantasyFootballTheme
 import com.google.firebase.FirebaseApp
+import com.example.fantasyfootballqb.ui.components.AppTopBar
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,7 +34,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-
 @Composable
 fun FantasyApp() {
     val navController = rememberNavController()
@@ -41,26 +42,33 @@ fun FantasyApp() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    // schermate dove mostrare la bottom bar
-    val bottomBarRoutes = listOf(
-        Routes.Home.route,
-        Routes.Team.route,
-        Routes.Calendar.route,
-        Routes.Stats.route,
-        Routes.Ranking.route,
-        Routes.Profile.route
+    // schermate dove mostrare la bottom bar / top bar
+    val visibleRoutes = listOf(
+        Routes.Home,
+        Routes.Team,
+        Routes.Calendar,
+        Routes.Stats,
+        Routes.Ranking,
+        Routes.Profile
     )
-    val showBottomBar = currentRoute in bottomBarRoutes
+    val showBars = visibleRoutes.any { it.route == currentRoute }
+
+    // recupera titolo (se route non trovata, titolo vuoto)
+    val currentTitle = visibleRoutes.find { it.route == currentRoute }?.title ?: "Fantasy Football"
 
     Surface(color = MaterialTheme.colorScheme.background) {
         Scaffold(
+            topBar = {
+                if (showBars) {
+                    AppTopBar(title = currentTitle)
+                }
+            },
             bottomBar = {
-                if (showBottomBar) {
+                if (showBars) {
                     BottomBar(navController = navController)
                 }
             }
         ) { innerPadding ->
-            // Passiamo il padding del Scaffold al NavHost tramite modifier
             NavGraph(
                 navController = navController,
                 modifier = Modifier.padding(innerPadding)
@@ -68,6 +76,7 @@ fun FantasyApp() {
         }
     }
 }
+
 
 @Preview(showBackground = true)
 @Composable

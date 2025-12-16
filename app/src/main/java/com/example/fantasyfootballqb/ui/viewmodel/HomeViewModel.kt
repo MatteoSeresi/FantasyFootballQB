@@ -69,13 +69,10 @@ class HomeViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 _loading.value = true
-                val map = mapOf(
-                    "nomeTeam" to name,
-                    "email" to (auth.currentUser?.email ?: ""),
-                    "username" to (auth.currentUser?.displayName ?: "")
-                )
-                db.collection("users").document(uid)
-                    .set(map, SetOptions.merge())
+                // update solo il campo nomeTeam, non toccare gli altri campi
+                db.collection("users")
+                    .document(uid)
+                    .update(mapOf("nomeTeam" to name))
                     .await()
 
                 _loading.value = false
@@ -86,6 +83,7 @@ class HomeViewModel : ViewModel() {
             }
         }
     }
+
 
     fun clearError() { _error.value = null }
     fun clearSuccess() { _success.value = null }

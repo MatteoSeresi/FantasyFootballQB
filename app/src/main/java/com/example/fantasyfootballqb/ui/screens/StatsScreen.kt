@@ -39,7 +39,7 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
     // bottom sheet visibility
     var showFilterSheet by remember { mutableStateOf(false) }
 
-    // scaffold for consistent layout if needed later
+    // sheet state
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val coroutineScope = rememberCoroutineScope()
 
@@ -77,20 +77,37 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                 colors = CardDefaults.cardColors(containerColor = Color.White)
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    // header row
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.primary)
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Giocatore", modifier = Modifier.weight(0.45f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
-                        Text("Team", modifier = Modifier.weight(0.2f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
-                        Text("GP", modifier = Modifier.weight(0.1f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
-                        Text("PTOT", modifier = Modifier.weight(0.15f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
-                        Text("PPG", modifier = Modifier.weight(0.1f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
+                    // header row -> cambia se siamo in modalità week-filter
+                    if (selectedWeek != null) {
+                        // Week filter active: show Giocatore | Team | Punteggio
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.primary)
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Giocatore", modifier = Modifier.weight(0.6f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
+                            Text("Team", modifier = Modifier.weight(0.25f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
+                            Text("Punteggio", modifier = Modifier.weight(0.15f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
+                        }
+                    } else {
+                        // Default: Giocatore | Team | GP | PTOT | PPG
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.primary)
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Giocatore", modifier = Modifier.weight(0.45f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
+                            Text("Team", modifier = Modifier.weight(0.2f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
+                            Text("GP", modifier = Modifier.weight(0.1f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
+                            Text("PTOT", modifier = Modifier.weight(0.15f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
+                            Text("PPG", modifier = Modifier.weight(0.1f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
+                        }
                     }
 
                     if (rows.isEmpty()) {
@@ -102,23 +119,43 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                             items(rows) { r ->
                                 val idx = rows.indexOf(r)
                                 val background = if (idx % 2 == 0) MaterialTheme.colorScheme.surface.copy(alpha = 0.12f) else Color.Transparent
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(background)
-                                        .padding(horizontal = 12.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Text(r.nome, modifier = Modifier.weight(0.45f), fontSize = 15.sp)
-                                    Text(r.squadra, modifier = Modifier.weight(0.2f))
-                                    Text(r.gp.toString(), modifier = Modifier.weight(0.1f))
 
-                                    val ptotText = if (r.ptot == 0.0) "-" else r.ptot.toInt().toString()
-                                    Text(ptotText, modifier = Modifier.weight(0.15f))
+                                if (selectedWeek != null) {
+                                    // week-filtered row: Giocatore | Team | Punteggio
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(background)
+                                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(r.nome, modifier = Modifier.weight(0.6f), fontSize = 15.sp)
+                                        Text(r.squadra, modifier = Modifier.weight(0.25f))
+                                        // Punteggio: se 0 mostra "-" altrimenti valore (intero)
+                                        val puntText = if (r.ptot == 0.0) "-" else r.ptot.toInt().toString()
+                                        Text(puntText, modifier = Modifier.weight(0.15f))
+                                    }
+                                } else {
+                                    // default row: Giocatore | Team | GP | PTOT | PPG
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(background)
+                                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(r.nome, modifier = Modifier.weight(0.45f), fontSize = 15.sp)
+                                        Text(r.squadra, modifier = Modifier.weight(0.2f))
+                                        Text(r.gp.toString(), modifier = Modifier.weight(0.1f))
 
-                                    val ppgText = if (r.ptot == 0.0) "-" else String.format("%.1f", r.ppg)
-                                    Text(ppgText, modifier = Modifier.weight(0.1f))
+                                        val ptotText = if (r.ptot == 0.0) "-" else r.ptot.toInt().toString()
+                                        Text(ptotText, modifier = Modifier.weight(0.15f))
+
+                                        val ppgText = if (r.ptot == 0.0) "-" else String.format("%.1f", r.ppg)
+                                        Text(ppgText, modifier = Modifier.weight(0.1f))
+                                    }
                                 }
                             }
                         }
@@ -155,7 +192,7 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Filtro", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                        Text("Filtri", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                         TextButton(onClick = {
                             // reset all filters, update VM and keep sheet open
                             vm.setWeekFilter(null)
@@ -168,7 +205,7 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
 
                     // Week selector
                     Column {
-                        Text("Seleziona la week:", style = MaterialTheme.typography.bodyMedium)
+                        Text("Week", style = MaterialTheme.typography.bodyMedium)
                         WeekSelector(availableWeeks = availableWeeks, initial = selectedWeek) { week ->
                             vm.setWeekFilter(week)
                         }
@@ -176,7 +213,7 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
 
                     // Team selector
                     Column {
-                        Text("Seleziona la squadra:", style = MaterialTheme.typography.bodyMedium)
+                        Text("Squadra", style = MaterialTheme.typography.bodyMedium)
                         TeamSelector(availableTeams = availableTeams, initial = selectedTeam) { team ->
                             vm.setTeamFilter(team)
                         }
@@ -184,7 +221,7 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
 
                     // Search field
                     Column {
-                        Text("Cerca il QB", style = MaterialTheme.typography.bodyMedium)
+                        Text("Cerca Giocatore", style = MaterialTheme.typography.bodyMedium)
                         OutlinedTextField(
                             value = searchQuery,
                             onValueChange = { vm.setSearchQuery(it) },
@@ -203,13 +240,13 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
 @Composable
 private fun WeekSelector(availableWeeks: List<Int>, initial: Int?, onWeekSelected: (Int?) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    val label = initial?.toString() ?: "Weeks"
+    val label = initial?.toString() ?: "Tutte le weeks"
     Box {
         Button(onClick = { expanded = true }) {
             Text(text = label)
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(text = { Text("Weeks") }, onClick = {
+            DropdownMenuItem(text = { Text("Tutte le weeks") }, onClick = {
                 onWeekSelected(null); expanded = false
             })
             availableWeeks.forEach { w ->
@@ -224,13 +261,13 @@ private fun WeekSelector(availableWeeks: List<Int>, initial: Int?, onWeekSelecte
 @Composable
 private fun TeamSelector(availableTeams: List<String>, initial: String?, onTeamSelected: (String?) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    val label = initial ?: "Teams"
+    val label = initial ?: "Tutte le squadre"
     Box {
         Button(onClick = { expanded = true }) {
             Text(text = label)
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(text = { Text("Teams") }, onClick = {
+            DropdownMenuItem(text = { Text("Tutte le squadre") }, onClick = {
                 onTeamSelected(null); expanded = false
             })
             availableTeams.forEach { t ->

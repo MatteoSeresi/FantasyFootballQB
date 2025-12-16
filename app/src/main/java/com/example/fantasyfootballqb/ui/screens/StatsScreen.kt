@@ -4,7 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,43 +21,63 @@ import com.example.fantasyfootballqb.ui.viewmodel.StatsViewModel
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.List
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatsScreen(vm: StatsViewModel = viewModel()) {
-    val rowsAll by vm.rows.collectAsState()
+    val rows by vm.rows.collectAsState()
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
 
-    // Filtra fuori i giocatori con GP == 0 (non convocati / senza weekstats)
-    val rows = remember(rowsAll) { rowsAll.filter { it.gp > 0 } }
+    val availableWeeks by vm.availableWeeks.collectAsState()
+    val availableTeams by vm.availableTeams.collectAsState()
+    val selectedWeek by vm.selectedWeek.collectAsState()
+    val selectedTeam by vm.selectedTeam.collectAsState()
+    val searchQuery by vm.searchQuery.collectAsState()
+
+    // bottom sheet visibility
+    var showFilterSheet by remember { mutableStateOf(false) }
+
+    // scaffold for consistent layout if needed later
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val coroutineScope = rememberCoroutineScope()
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f))) {
         Column(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            // header card
+
+            // Top card: titolo + open filter button
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Statistiche", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                    // filtro non implementato per ora (placeholder)
-                    IconButton(onClick = { /* placeholder per filtro */ }) {
-                        Icon(Icons.Default.List, contentDescription = "Filtro")
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Statistiche", style = MaterialTheme.typography.titleMedium)
+                        val summary = buildString {
+                            if (selectedWeek != null) append("Week ${selectedWeek}  ")
+                            if (!selectedTeam.isNullOrBlank()) append("${selectedTeam}  ")
+                            if (searchQuery.isNotBlank()) append("ricerca: \"${searchQuery}\"")
+                        }
+                        if (summary.isNotBlank()) {
+                            Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    IconButton(onClick = { showFilterSheet = true }) {
+                        Icon(Icons.Default.List, contentDescription = "Apri filtri")
                     }
                 }
             }
 
-            // table
+            // Table card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White)
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    // header row (blue)
+                    // header row
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -75,7 +100,8 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                     } else {
                         LazyColumn {
                             items(rows) { r ->
-                                val background = if (rows.indexOf(r) % 2 == 0) MaterialTheme.colorScheme.surface.copy(alpha = 0.12f) else Color.Transparent
+                                val idx = rows.indexOf(r)
+                                val background = if (idx % 2 == 0) MaterialTheme.colorScheme.surface.copy(alpha = 0.12f) else Color.Transparent
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -88,11 +114,9 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                                     Text(r.squadra, modifier = Modifier.weight(0.2f))
                                     Text(r.gp.toString(), modifier = Modifier.weight(0.1f))
 
-                                    // PTOT: se = 0 mostra "-" (richiesta)
                                     val ptotText = if (r.ptot == 0.0) "-" else r.ptot.toInt().toString()
                                     Text(ptotText, modifier = Modifier.weight(0.15f))
 
-                                    // PPG: se PTOT == 0 mostra "-" altrimenti mostra con 1 decimale
                                     val ppgText = if (r.ptot == 0.0) "-" else String.format("%.1f", r.ppg)
                                     Text(ppgText, modifier = Modifier.weight(0.1f))
                                 }
@@ -113,6 +137,107 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
 
         if (error != null) {
             LaunchedEffect(error) { vm.clearError() }
+        }
+
+        // --- Bottom sheet for filters ---
+        if (showFilterSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showFilterSheet = false },
+                sheetState = sheetState,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // content inside bottom sheet: scrollable column for mobile
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Filtro", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                        TextButton(onClick = {
+                            // reset all filters, update VM and keep sheet open
+                            vm.setWeekFilter(null)
+                            vm.setTeamFilter(null)
+                            vm.setSearchQuery("")
+                        }) {
+                            Text("Reset")
+                        }
+                    }
+
+                    // Week selector
+                    Column {
+                        Text("Seleziona la week:", style = MaterialTheme.typography.bodyMedium)
+                        WeekSelector(availableWeeks = availableWeeks, initial = selectedWeek) { week ->
+                            vm.setWeekFilter(week)
+                        }
+                    }
+
+                    // Team selector
+                    Column {
+                        Text("Seleziona la squadra:", style = MaterialTheme.typography.bodyMedium)
+                        TeamSelector(availableTeams = availableTeams, initial = selectedTeam) { team ->
+                            vm.setTeamFilter(team)
+                        }
+                    }
+
+                    // Search field
+                    Column {
+                        Text("Cerca il QB", style = MaterialTheme.typography.bodyMedium)
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { vm.setSearchQuery(it) },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("Cerca per nome...") },
+                            singleLine = true,
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Cerca") }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeekSelector(availableWeeks: List<Int>, initial: Int?, onWeekSelected: (Int?) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val label = initial?.toString() ?: "Weeks"
+    Box {
+        Button(onClick = { expanded = true }) {
+            Text(text = label)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(text = { Text("Weeks") }, onClick = {
+                onWeekSelected(null); expanded = false
+            })
+            availableWeeks.forEach { w ->
+                DropdownMenuItem(text = { Text("Week $w") }, onClick = {
+                    onWeekSelected(w); expanded = false
+                })
+            }
+        }
+    }
+}
+
+@Composable
+private fun TeamSelector(availableTeams: List<String>, initial: String?, onTeamSelected: (String?) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val label = initial ?: "Teams"
+    Box {
+        Button(onClick = { expanded = true }) {
+            Text(text = label)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(text = { Text("Teams") }, onClick = {
+                onTeamSelected(null); expanded = false
+            })
+            availableTeams.forEach { t ->
+                DropdownMenuItem(text = { Text(t) }, onClick = {
+                    onTeamSelected(t); expanded = false
+                })
+            }
         }
     }
 }

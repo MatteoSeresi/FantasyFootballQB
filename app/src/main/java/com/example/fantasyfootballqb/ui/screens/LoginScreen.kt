@@ -1,89 +1,98 @@
 package com.example.fantasyfootballqb.ui.screens
 
+import android.util.Log
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Login
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import com.example.fantasyfootballqb.ui.viewmodel.AuthViewModel
-import com.example.fantasyfootballqb.ui.viewmodel.AuthUiState
-
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 @Composable
 fun LoginScreen(
-    onLoginSuccess: () -> Unit,
-    onRegister: () -> Unit,
-    authViewModel: AuthViewModel = viewModel()
+    onLoginNavigate: (isAdmin: Boolean) -> Unit,
+    onRegister: () -> Unit
 ) {
-    val loginState by authViewModel.loginState.collectAsState()
+    val auth = FirebaseAuth.getInstance()
+    val db = FirebaseFirestore.getInstance()
 
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(modifier = Modifier
-            .fillMaxWidth()
-            .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text("Login", style = MaterialTheme.typography.titleLarge)
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    var loading by remember { mutableStateOf(false) }
 
-            Spacer(modifier = Modifier.height(16.dp))
+    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+        Box(modifier = Modifier
+            .fillMaxSize()
+            .padding(padding), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
+                Text(text = "Accedi", style = MaterialTheme.typography.titleLarge)
+                Spacer(modifier = Modifier.height(16.dp))
 
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it },
-                label = { Text("Email") },
-                modifier = Modifier.fillMaxWidth()
-            )
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("Email") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = PasswordVisualTransformation()
+                )
+                Spacer(modifier = Modifier.height(16.dp))
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("Password") },
-                modifier = Modifier.fillMaxWidth(),
-                visualTransformation = PasswordVisualTransformation()
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            when (loginState) {
-                is AuthUiState.Loading -> {
-                    CircularProgressIndicator()
-                }
-                is AuthUiState.Error -> {
-                    Text(
-                        text = (loginState as AuthUiState.Error).message,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-                is AuthUiState.Success -> {
-                    // naviga alla home
-                    LaunchedEffect(Unit) {
-                        onLoginSuccess()
+                Button(onClick = {
+                    // login flow
+                    scope.launch {
+                        try {
+                            loading = true
+                            val result = auth.signInWithEmailAndPassword(email.trim(), password).await()
+                            val user = auth.currentUser
+                            if (user == null) {
+                                snackbarHostState.showSnackbar("Login non riuscito")
+                                loading = false
+                                return@launch
+                            }
+                            // leggi doc users/{uid}
+                            val uid = user.uid
+                            val doc = db.collection("users").document(uid).get().await()
+                            val isAdmin = doc.exists() && (doc.getBoolean("isAdmin") == true)
+                            // naviga in base al valore isAdmin
+                            onLoginNavigate(isAdmin)
+                        } catch (e: Exception) {
+                            Log.e("LoginScreen", "login error: ${e.message}", e)
+                            snackbarHostState.showSnackbar(e.message ?: "Errore login")
+                        } finally {
+                            loading = false
+                        }
                     }
+                }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Accedi")
                 }
-                else -> { /* Idle */ }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(onClick = onRegister) {
+                    Text("Vai a Registrazione")
+                }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Button(
-                onClick = { authViewModel.login(email, password) },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Accedi")
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            TextButton(onClick = { onRegister() }) {
-                Text("Non hai un account? Registrati")
+            if (loading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
         }
     }

@@ -21,10 +21,17 @@ fun NavGraph(
     ) {
         composable(Routes.Login.route) {
             LoginScreen(
-                onLoginSuccess = {
-                    navController.navigate(Routes.Home.route) {
-                        popUpTo(Routes.Login.route) { inclusive = true }
-                        launchSingleTop = true
+                onLoginNavigate = { isAdmin ->
+                    if (isAdmin) {
+                        navController.navigate(Routes.Admin.route) {
+                            popUpTo(Routes.Login.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    } else {
+                        navController.navigate(Routes.Home.route) {
+                            popUpTo(Routes.Login.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
                     }
                 },
                 onRegister = {
@@ -60,5 +67,19 @@ fun NavGraph(
                 }
             })
         }
+
+        // composable Admin screen
+        composable(Routes.Admin.route) {
+            AdminScreen(onLogout = {
+                // assicuriamoci di pulire sessione e tornare a Login
+                // puoi anche chiamare FirebaseAuth.getInstance().signOut() prima di navigare,
+                // ma se il logout è gestito all'interno di Admin (o Profile) puoi omettere.
+                navController.navigate(Routes.Login.route) {
+                    popUpTo(navController.graph.startDestinationId) { inclusive = true }
+                    launchSingleTop = true
+                }
+            })
+        }
     }
 }
+

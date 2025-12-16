@@ -13,4 +13,5 @@ sealed class Routes(val route: String, val title: String, val icon: ImageVector?
     object Stats : Routes("stats", "Stats", Icons.Default.BarChart)
     object Ranking : Routes("ranking", "Ranks", Icons.Default.EmojiEvents)
     object Profile : Routes("profile", "Profile", Icons.Default.Person)
+    object Admin : Routes("admin", "Admin")
 }

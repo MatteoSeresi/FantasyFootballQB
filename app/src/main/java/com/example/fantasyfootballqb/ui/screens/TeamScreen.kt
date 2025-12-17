@@ -110,65 +110,92 @@ fun TeamScreen(
 
                 Card(modifier = Modifier.fillMaxWidth().heightIn(min = 260.dp), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                     Column(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        // Caso: utente non ha formazione
                         if (formationQBs.isEmpty()) {
-                            // Selection phase
-                            Text("Seleziona i 3 giocatori da schierare:", fontWeight = FontWeight.SemiBold)
+                            // Se la week è già stata calcolata => week disputata: blocca selezione
+                            if (weekCalculated) {
+                                // NUOVA UI per utente nuovo vs utente esistente
+                                if (userTeamName.isNullOrBlank()) {
+                                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("WEEK DISPUTATA", fontWeight = FontWeight.Bold)
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            "Sei un nuovo utente e ti sei registrato dopo che questa week è stata disputata. " +
+                                                    "Non è possibile schierare la formazione retroattivamente per questa week.",
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                } else {
+                                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("WEEK DISPUTATA", fontWeight = FontWeight.Bold)
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            "La possibilità di schierare la formazione per questa week è terminata. " +
+                                                    "Se avevi già una formazione non verrà accettata perché la week è stata già calcolata.",
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            } else {
+                                // Selection phase (utente può scegliere)
+                                Text("Seleziona i 3 giocatori da schierare:", fontWeight = FontWeight.SemiBold)
 
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                selectedSlots.forEachIndexed { idx, qb ->
-                                    Card(modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            slotIndexForDialog = idx
-                                            slotDialogOpen = true
-                                        }, shape = RoundedCornerShape(8.dp)) {
-                                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            if (qb != null && qb.id.isNotEmpty()) {
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text("- ${qb.nome}", fontWeight = FontWeight.SemiBold)
-                                                    // mostra anche contro quale squadra giocherà (se disponibile)
-                                                    val game = gamesForWeek.firstOrNull { it.squadraCasa == qb.squadra || it.squadraOspite == qb.squadra }
-                                                    val oppText = game?.let {
-                                                        // formato NO - ARI
-                                                        "${it.squadraCasa} - ${it.squadraOspite}"
-                                                    } ?: "Avversario non disponibile"
-                                                    Text("${oppText}", style = MaterialTheme.typography.bodySmall)
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    selectedSlots.forEachIndexed { idx, qb ->
+                                        Card(modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                slotIndexForDialog = idx
+                                                slotDialogOpen = true
+                                            }, shape = RoundedCornerShape(8.dp)) {
+                                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                if (qb != null && qb.id.isNotEmpty()) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text("- ${qb.nome}", fontWeight = FontWeight.SemiBold)
+                                                        // mostra anche contro quale squadra giocherà (se disponibile)
+                                                        val game = gamesForWeek.firstOrNull { it.squadraCasa == qb.squadra || it.squadraOspite == qb.squadra }
+                                                        val oppText = game?.let {
+                                                            // formato HOME - AWAY (ad es. NO - ARI)
+                                                            "${it.squadraCasa} - ${it.squadraOspite}"
+                                                        } ?: "Avversario non disponibile"
+                                                        Text("${oppText}", style = MaterialTheme.typography.bodySmall)
+                                                    }
+                                                    Text("Cambia")
+                                                } else {
+                                                    Box(modifier = Modifier.size(44.dp).background(Color.LightGray, shape = RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                                                        Text("+")
+                                                    }
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text("Aggiungi QB")
                                                 }
-                                                Text("Cambia")
-                                            } else {
-                                                Box(modifier = Modifier.size(44.dp).background(Color.LightGray, shape = RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                                                    Text("+")
-                                                }
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                Text("Aggiungi QB")
                                             }
                                         }
                                     }
                                 }
-                            }
 
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text("Tocca uno slot (+) per scegliere un QB tra i titolari.", style = MaterialTheme.typography.bodySmall)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text("Tocca uno slot (+) per scegliere un QB tra i titolari.", style = MaterialTheme.typography.bodySmall)
 
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(onClick = {
-                                val filled = selectedSlots.filterNotNull().filter { it.id.isNotEmpty() }
-                                if (filled.size != 3) {
-                                    coroutineScope.launch { snackbarHostState.showSnackbar("Devi selezionare 3 QB") }
-                                    return@Button
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(onClick = {
+                                    val filled = selectedSlots.filterNotNull().filter { it.id.isNotEmpty() }
+                                    if (filled.size != 3) {
+                                        coroutineScope.launch { snackbarHostState.showSnackbar("Devi selezionare 3 QB") }
+                                        return@Button
+                                    }
+                                    val ids = filled.map { it.id }
+                                    if (ids.toSet().size != 3) {
+                                        coroutineScope.launch { snackbarHostState.showSnackbar("I 3 QB devono essere diversi") }
+                                        return@Button
+                                    }
+                                    showConfirmInsertDialog = true
+                                }, modifier = Modifier.fillMaxWidth()) {
+                                    Text("INSERISCI LA FORMAZIONE")
                                 }
-                                val ids = filled.map { it.id }
-                                if (ids.toSet().size != 3) {
-                                    coroutineScope.launch { snackbarHostState.showSnackbar("I 3 QB devono essere diversi") }
-                                    return@Button
-                                }
-                                showConfirmInsertDialog = true
-                            }, modifier = Modifier.fillMaxWidth()) {
-                                Text("INSERISCI LA FORMAZIONE")
                             }
 
                         } else {
-                            // Formation exists: show formation + matchup and total
+                            // Caso: l'utente ha già una formazione (mostriamo la formazione e lo stato basato su weekCalculated)
                             Text("Formazione:", fontWeight = FontWeight.SemiBold)
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 val scoresMap = formationScores.associateBy({ it.qb.id }, { it })
@@ -177,7 +204,6 @@ fun TeamScreen(
                                         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                             Column(modifier = Modifier.weight(1f)) {
                                                 Text("- ${qb.nome}", fontWeight = FontWeight.SemiBold)
-                                                // format TEAM - OPP
                                                 val info = scoresMap[qb.id]
                                                 val opp = info?.opponentTeam
                                                 val matchup = if (!opp.isNullOrBlank()) "${qb.squadra} - $opp" else "${qb.squadra} - ?"

@@ -16,7 +16,8 @@ import kotlinx.coroutines.tasks.await
 
 data class QBWithScore(
     val qb: QB,
-    val score: Double?
+    val score: Double?,
+    val opponentTeam: String? // es. "ARI" o null se non trovata
 )
 
 class TeamViewModel : ViewModel() {
@@ -37,6 +38,10 @@ class TeamViewModel : ViewModel() {
 
     private val _userTeamName = MutableStateFlow<String?>(null)
     val userTeamName: StateFlow<String?> = _userTeamName
+
+    // games della week corrente
+    private val _gamesForWeek = MutableStateFlow<List<Game>>(emptyList())
+    val gamesForWeek: StateFlow<List<Game>> = _gamesForWeek
 
     // weekCalculated (derived from games.partitaCalcolata)
     private val _weekCalculated = MutableStateFlow(false)
@@ -109,6 +114,40 @@ class TeamViewModel : ViewModel() {
             }
     }
 
+    /**
+     * Carica le games per la week (usato per mostrare contro quale squadra gioca ciascun QB).
+     */
+    fun loadGamesForWeek(week: Int) {
+        viewModelScope.launch {
+            try {
+                val snaps = db.collection("games").whereEqualTo("weekNumber", week).get().await()
+                val games = snaps.documents.mapNotNull { d ->
+                    try {
+                        val weekNum = (d.getLong("weekNumber") ?: 0L).toInt()
+                        Game(
+                            id = d.id,
+                            weekNumber = weekNum,
+                            squadraCasa = d.getString("squadraCasa") ?: "",
+                            squadraOspite = d.getString("squadraOspite") ?: "",
+                            partitaGiocata = d.getBoolean("partitaGiocata") ?: false,
+                            risultato = d.getString("risultato"),
+                            partitaCalcolata = d.getBoolean("partitaCalcolata") ?: false
+                        )
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+                _gamesForWeek.value = games
+            } catch (e: Exception) {
+                Log.e("TeamVM", "loadGamesForWeek: ${e.message}", e)
+                _error.value = e.message
+            }
+        }
+    }
+
+    /**
+     * Carica la formazione dell'utente per la week, popola _formationQBs e carica i punteggi (formationScores).
+     */
     fun loadUserFormationForWeek(week: Int) {
         viewModelScope.launch {
             _loading.value = true
@@ -119,7 +158,9 @@ class TeamViewModel : ViewModel() {
                     _loading.value = false
                     return@launch
                 }
-                // osserva lo stato della week
+
+                // fetch games for week to be able to resolve opponents
+                loadGamesForWeek(week)
                 observeWeekCalculated(week)
 
                 val docRef = db.collection("users").document(uid).collection("formations").document(week.toString())
@@ -162,6 +203,9 @@ class TeamViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Submit formation (unchangeable after submit).
+     */
     fun submitFormation(week: Int, qbIds: List<String>) {
         if (qbIds.size != 3) {
             _error.value = "Devi selezionare 3 QB distinti"
@@ -183,7 +227,9 @@ class TeamViewModel : ViewModel() {
                     "locked" to false
                 )
                 docRef.set(data, SetOptions.merge()).await()
+                // impostiamo locked true (simulando "inserisci formazione")
                 docRef.update(mapOf("locked" to true)).await()
+                // ricarica dati
                 loadUserFormationForWeek(week)
             } catch (e: Exception) {
                 Log.e("TeamVM", "submitFormation: ${e.message}", e)
@@ -194,21 +240,51 @@ class TeamViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Carica i punteggi associati ai QB della formazione per la week.
+     * Inoltre risolve l'avversaria per ciascun QB (opponentTeam).
+     */
     private fun loadScoresForFormation(qbs: List<QB>, week: Int) {
         viewModelScope.launch {
             _loading.value = true
             _error.value = null
             try {
-                val gamesSnap = db.collection("games").whereEqualTo("weekNumber", week).get().await()
-                val gameIds = gamesSnap.documents.map { it.id }.toSet()
+                // prendi games per la week (se non già caricati)
+                val games = if (_gamesForWeek.value.isNotEmpty()) _gamesForWeek.value else {
+                    val snaps = db.collection("games").whereEqualTo("weekNumber", week).get().await()
+                    snaps.documents.mapNotNull { d ->
+                        try {
+                            val weekNum = (d.getLong("weekNumber") ?: 0L).toInt()
+                            Game(
+                                id = d.id,
+                                weekNumber = weekNum,
+                                squadraCasa = d.getString("squadraCasa") ?: "",
+                                squadraOspite = d.getString("squadraOspite") ?: "",
+                                partitaGiocata = d.getBoolean("partitaGiocata") ?: false,
+                                risultato = d.getString("risultato"),
+                                partitaCalcolata = d.getBoolean("partitaCalcolata") ?: false
+                            )
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                }
+
+                // mappa team -> opponent per rapida risoluzione
+                val teamToOpponent = mutableMapOf<String, String>()
+                for (g in games) {
+                    teamToOpponent[g.squadraCasa] = g.squadraOspite
+                    teamToOpponent[g.squadraOspite] = g.squadraCasa
+                }
 
                 val results = mutableListOf<QBWithScore>()
                 for (qb in qbs) {
+                    // cerca weekstats per qb nella settimana (potrebbe esserci più di un doc, prendiamo il primo matching per i games della week)
                     val wsSnap = db.collection("weekstats").whereEqualTo("qb_id", qb.id).get().await()
                     var foundScore: Double? = null
                     for (doc in wsSnap.documents) {
                         val gameId = doc.getString("game_id") ?: doc.getString("gameId")
-                        if (gameId != null && gameIds.contains(gameId)) {
+                        if (gameId != null && games.any { it.id == gameId }) {
                             val raw = doc.get("punteggioQB") ?: doc.get("punteggio_qb") ?: doc.get("punteggio")
                             val valnum: Double? = when (raw) {
                                 is Number -> raw.toDouble()
@@ -219,7 +295,8 @@ class TeamViewModel : ViewModel() {
                             break
                         }
                     }
-                    results.add(QBWithScore(qb = qb, score = foundScore))
+                    val opponent = teamToOpponent[qb.squadra]
+                    results.add(QBWithScore(qb = qb, score = foundScore, opponentTeam = opponent))
                 }
                 _formationScores.value = results
             } catch (e: Exception) {

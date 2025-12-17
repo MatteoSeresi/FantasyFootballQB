@@ -28,11 +28,12 @@ fun TeamScreen(
     val availableQBs by vm.availableQBs.collectAsState()
     val formationQBs by vm.formationQBs.collectAsState()
     val formationLocked by vm.formationLocked.collectAsState()
-    val formationScores by vm.formationScores.collectAsState() // possiamo tenerlo, UI non lo usa per decidere la fase
+    val formationScores by vm.formationScores.collectAsState()
     val userTeamName by vm.userTeamName.collectAsState()
-    val weekCalculated by vm.weekCalculated.collectAsState() // l'unico flag usato per decidere FINAL
+    val weekCalculated by vm.weekCalculated.collectAsState()
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
+    val gamesForWeek by vm.gamesForWeek.collectAsState()
 
     var selectedWeek by remember { mutableStateOf(weekDefault) }
 
@@ -48,6 +49,7 @@ fun TeamScreen(
     // load formation + observe weekCalculated on week change
     LaunchedEffect(selectedWeek) {
         vm.loadUserFormationForWeek(selectedWeek)
+        vm.loadGamesForWeek(selectedWeek)
         vm.observeWeekCalculated(selectedWeek)
     }
 
@@ -63,12 +65,17 @@ fun TeamScreen(
         }
     }
 
-    // show error snackbar
     LaunchedEffect(error) {
         if (!error.isNullOrBlank()) {
             coroutineScope.launch { snackbarHostState.showSnackbar(error!!) }
             vm.clearError()
         }
+    }
+
+    // calcola totale punteggi (sommo solo punteggi > 0)
+    val totalScore: Double? = remember(formationScores) {
+        val s = formationScores.mapNotNull { it.score?.takeIf { v -> v > 0.0 } }.sum()
+        if (s > 0.0) s else null
     }
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { innerPadding ->
@@ -78,14 +85,12 @@ fun TeamScreen(
             .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f))
         ) {
             Column(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                // header
                 Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                     Box(modifier = Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
                         Text("Gestione Squadra", fontWeight = FontWeight.Bold)
                     }
                 }
 
-                // team + week selector
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Team: ${userTeamName ?: "—"}", fontWeight = FontWeight.SemiBold)
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -97,23 +102,18 @@ fun TeamScreen(
                                 DropdownMenuItem(text = { Text(w.toString()) }, onClick = {
                                     selectedWeek = w
                                     expanded = false
-                                    // ricarica formazione e osserva stato week per la nuova week
-                                    vm.loadUserFormationForWeek(w)
-                                    vm.observeWeekCalculated(w)
                                 })
                             }
                         }
                     }
                 }
 
-                // main card
                 Card(modifier = Modifier.fillMaxWidth().heightIn(min = 260.dp), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                     Column(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (formationQBs.isEmpty()) {
-                            // Selection phase (utente sceglie i 3 QB)
+                            // Selection phase
                             Text("Seleziona i 3 giocatori da schierare:", fontWeight = FontWeight.SemiBold)
 
-                            // slots tappabili (aprono dialog per scegliere il QB)
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 selectedSlots.forEachIndexed { idx, qb ->
                                     Card(modifier = Modifier
@@ -126,7 +126,13 @@ fun TeamScreen(
                                             if (qb != null && qb.id.isNotEmpty()) {
                                                 Column(modifier = Modifier.weight(1f)) {
                                                     Text("- ${qb.nome}", fontWeight = FontWeight.SemiBold)
-                                                    Text(qb.squadra, style = MaterialTheme.typography.bodySmall)
+                                                    // mostra anche contro quale squadra giocherà (se disponibile)
+                                                    val game = gamesForWeek.firstOrNull { it.squadraCasa == qb.squadra || it.squadraOspite == qb.squadra }
+                                                    val oppText = game?.let {
+                                                        // formato NO - ARI
+                                                        "${it.squadraCasa} - ${it.squadraOspite}"
+                                                    } ?: "Avversario non disponibile"
+                                                    Text("${oppText}", style = MaterialTheme.typography.bodySmall)
                                                 }
                                                 Text("Cambia")
                                             } else {
@@ -156,27 +162,29 @@ fun TeamScreen(
                                     coroutineScope.launch { snackbarHostState.showSnackbar("I 3 QB devono essere diversi") }
                                     return@Button
                                 }
-                                // conferma: dopo submit la UI rimarrà in ATTESA finché vm.weekCalculated == false
                                 showConfirmInsertDialog = true
                             }, modifier = Modifier.fillMaxWidth()) {
                                 Text("INSERISCI LA FORMAZIONE")
                             }
 
                         } else {
-                            // Formation exists: we show formation + status based on vm.weekCalculated ONLY
+                            // Formation exists: show formation + matchup and total
                             Text("Formazione:", fontWeight = FontWeight.SemiBold)
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                val scoresMap = formationScores.associateBy({ it.qb.id }, { it.score })
+                                val scoresMap = formationScores.associateBy({ it.qb.id }, { it })
                                 formationQBs.forEach { qb ->
                                     Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
                                         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                             Column(modifier = Modifier.weight(1f)) {
                                                 Text("- ${qb.nome}", fontWeight = FontWeight.SemiBold)
-                                                Text("${qb.squadra}  vs  ·", style = MaterialTheme.typography.bodySmall)
+                                                // format TEAM - OPP
+                                                val info = scoresMap[qb.id]
+                                                val opp = info?.opponentTeam
+                                                val matchup = if (!opp.isNullOrBlank()) "${qb.squadra} - $opp" else "${qb.squadra} - ?"
+                                                Text(matchup, style = MaterialTheme.typography.bodySmall)
                                             }
-                                            // display score (UI detail) — but decision about final screen uses only weekCalculated
-                                            val score = scoresMap[qb.id]
-                                            val display = if (score == null || score == 0.0) "-" else String.format("%.0f", score)
+                                            val score = scoresMap[qb.id]?.score
+                                            val display = if (score == null || score == 0.0) "-" else String.format("%.1f", score)
                                             Text("pt: $display")
                                         }
                                     }
@@ -184,14 +192,25 @@ fun TeamScreen(
 
                                 Spacer(modifier = Modifier.height(6.dp))
 
-                                // DECISIONE: solo in base a weekCalculated
+                                // show total
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Totale: ", fontWeight = FontWeight.SemiBold)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = totalScore?.let { String.format("%.1f", it) } ?: "-",
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
                                 if (!weekCalculated) {
                                     Surface(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surface) {
-                                        Text("IN ATTESA DEL CALCOLO DELLA GIORNATA", modifier = Modifier.padding(12.dp), textAlign = TextAlign.Center)
+                                        Text("ATTENDI IL CALCOLO DELLA WEEK", modifier = Modifier.padding(12.dp), textAlign = TextAlign.Center)
                                     }
                                 } else {
-                                    Button(onClick = { /* nessuna azione per ora */ }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF5350))) {
-                                        Text("WEEK GIÀ' GIOCATA", color = Color.White)
+                                    Button(onClick = { /* nulla per ora */ }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF5350))) {
+                                        Text("WEEK DISPUTATA", color = Color.White)
                                     }
                                 }
                             }
@@ -202,7 +221,7 @@ fun TeamScreen(
         }
     }
 
-    // Dialog per selezionare QB nello slot
+    // QB selection dialog
     if (slotDialogOpen && slotIndexForDialog != null) {
         val idx = slotIndexForDialog!!
         AlertDialog(onDismissRequest = { slotDialogOpen = false; slotIndexForDialog = null }, title = { Text("Scegli QB per slot ${idx + 1}") }, text = {
@@ -211,6 +230,12 @@ fun TeamScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyColumn {
                     items(availableQBs) { qb ->
+                        // risolvi avversaria usando gamesForWeek
+                        val game = gamesForWeek.firstOrNull { it.squadraCasa == qb.squadra || it.squadraOspite == qb.squadra }
+                        val oppText = game?.let { other ->
+                            if (other.squadraCasa == qb.squadra) other.squadraOspite else other.squadraCasa
+                        } ?: "N/D"
+
                         Row(modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
@@ -223,7 +248,7 @@ fun TeamScreen(
                             .padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(qb.nome, fontWeight = FontWeight.SemiBold)
-                                Text(qb.squadra, style = MaterialTheme.typography.bodySmall)
+                                Text("${qb.squadra} vs $oppText", style = MaterialTheme.typography.bodySmall)
                             }
                             Text("Seleziona")
                         }
@@ -248,7 +273,7 @@ fun TeamScreen(
         }, dismissButton = {})
     }
 
-    // dialog di conferma inserimento formazione
+    // confirm insert dialog
     if (showConfirmInsertDialog) {
         AlertDialog(onDismissRequest = { showConfirmInsertDialog = false }, title = { Text("Conferma inserimento") }, text = {
             Text("Sei sicuro di inserire la formazione? Una volta inserita non potrai più modificarla.")
@@ -258,8 +283,6 @@ fun TeamScreen(
                 val filled = selectedSlots.filterNotNull().filter { it.id.isNotEmpty() }
                 val ids = filled.map { it.id }
                 vm.submitFormation(selectedWeek, ids)
-                // important: don't change weekCalculated here. The screen will remain in "IN ATTESA"
-                // until admin sets partitaCalcolata=true for all games of this week.
             }) { Text("Conferma") }
         }, dismissButton = {
             TextButton(onClick = { showConfirmInsertDialog = false }) { Text("Annulla") }

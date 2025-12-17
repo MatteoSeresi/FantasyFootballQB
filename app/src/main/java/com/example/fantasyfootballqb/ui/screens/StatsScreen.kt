@@ -1,11 +1,11 @@
 package com.example.fantasyfootballqb.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.List
@@ -21,7 +21,9 @@ import com.example.fantasyfootballqb.ui.viewmodel.StatsViewModel
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color
-import kotlinx.coroutines.launch
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,7 +35,7 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
     val availableWeeks by vm.availableWeeks.collectAsState()
     val availableTeams by vm.availableTeams.collectAsState()
     val selectedWeek by vm.selectedWeek.collectAsState()
-    val selectedTeam by vm.selectedTeam.collectAsState()
+    val selectedTeams by vm.selectedTeams.collectAsState()
     val searchQuery by vm.searchQuery.collectAsState()
 
     // bottom sheet visibility
@@ -57,7 +59,7 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                         Text("Statistiche", style = MaterialTheme.typography.titleMedium)
                         val summary = buildString {
                             if (selectedWeek != null) append("Week ${selectedWeek}  ")
-                            if (!selectedTeam.isNullOrBlank()) append("${selectedTeam}  ")
+                            if (selectedTeams.isNotEmpty()) append(selectedTeams.joinToString(", ") + "  ")
                             if (searchQuery.isNotBlank()) append("ricerca: \"${searchQuery}\"")
                         }
                         if (summary.isNotBlank()) {
@@ -105,8 +107,8 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                             Text("Giocatore", modifier = Modifier.weight(0.45f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
                             Text("Team", modifier = Modifier.weight(0.2f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
                             Text("GP", modifier = Modifier.weight(0.1f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
-                            Text("PTOT", modifier = Modifier.weight(0.15f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
-                            Text("PPG", modifier = Modifier.weight(0.1f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
+                            Text("PTOT", modifier = Modifier.weight(0.15f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                            Text("PPG", modifier = Modifier.weight(0.1f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                         }
                     }
 
@@ -116,9 +118,8 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                         }
                     } else {
                         LazyColumn {
-                            items(rows) { r ->
-                                val idx = rows.indexOf(r)
-                                val background = if (idx % 2 == 0) MaterialTheme.colorScheme.surface.copy(alpha = 0.12f) else Color.Transparent
+                            itemsIndexed(rows) { index, r ->
+                                val background = if (index % 2 == 0) MaterialTheme.colorScheme.surface.copy(alpha = 0.12f) else Color.Transparent
 
                                 if (selectedWeek != null) {
                                     // week-filtered row: Giocatore | Team | Punteggio
@@ -176,14 +177,13 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
             LaunchedEffect(error) { vm.clearError() }
         }
 
-        // --- Bottom sheet for filters ---
+        // --- Bottom sheet for filters (with 4x8 team grid) ---
         if (showFilterSheet) {
             ModalBottomSheet(
                 onDismissRequest = { showFilterSheet = false },
                 sheetState = sheetState,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // content inside bottom sheet: scrollable column for mobile
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -192,30 +192,13 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Filtri", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                        Text("Filtro", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                         TextButton(onClick = {
-                            // reset all filters, update VM and keep sheet open
                             vm.setWeekFilter(null)
-                            vm.setTeamFilter(null)
+                            vm.resetTeamsSelection()
                             vm.setSearchQuery("")
                         }) {
                             Text("Reset")
-                        }
-                    }
-
-                    // Week selector
-                    Column {
-                        Text("Week", style = MaterialTheme.typography.bodyMedium)
-                        WeekSelector(availableWeeks = availableWeeks, initial = selectedWeek) { week ->
-                            vm.setWeekFilter(week)
-                        }
-                    }
-
-                    // Team selector
-                    Column {
-                        Text("Squadra", style = MaterialTheme.typography.bodyMedium)
-                        TeamSelector(availableTeams = availableTeams, initial = selectedTeam) { team ->
-                            vm.setTeamFilter(team)
                         }
                     }
 
@@ -231,50 +214,126 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                             leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Cerca") }
                         )
                     }
+
+                    // Week selector
+                    Column {
+                        Text("Week", style = MaterialTheme.typography.bodyMedium)
+                        WeekSelector(availableWeeks = availableWeeks, initial = selectedWeek) { week ->
+                            vm.setWeekFilter(week)
+                        }
+                    }
+
+                    // Team grid multi-select
+                    Column {
+                        Text("Squadre", style = MaterialTheme.typography.bodyMedium)
+                        TeamsGridMulti(
+                            allTeams = if (availableTeams.size >= 32) availableTeams else buildDefaultTeamList(availableTeams),
+                            selected = selectedTeams,
+                            onToggle = { t -> vm.toggleTeamSelection(t) }
+                        )
+
+                    }
                 }
             }
         }
     }
 }
 
+/**
+ * Se la lista availableTeams non ha 32 elementi (durante sviluppo),
+ * costruisco una lista di fallback di 32 elementi usando quelli presenti + placeholder.
+ */
+private fun buildDefaultTeamList(existing: List<String>): List<String> {
+    val result = existing.toMutableList()
+    var i = 1
+    while (result.size < 32) {
+        val code = "T${i}"
+        if (!result.contains(code)) result.add(code)
+        i++
+    }
+    return result.take(32)
+}
+
+/**
+ * Grid 4x8 per selezione multi-team.
+ * allTeams: almeno 32 elementi (se meno, verrà normalizzata).
+ * selected: Set<String> corrente (SnapshotStateSet non possibile, usiamo Set flow).
+ */
 @Composable
-private fun WeekSelector(availableWeeks: List<Int>, initial: Int?, onWeekSelected: (Int?) -> Unit) {
+private fun TeamsGridMulti(
+    allTeams: List<String>,
+    selected: Set<String>,
+    onToggle: (String) -> Unit
+) {
+    // Assicuriamoci di prendere esattamente 32 elementi
+    val teams = if (allTeams.size >= 32) allTeams.take(32) else buildDefaultTeamList(allTeams)
+
+    // chunk in 4 righe di 8 colonne
+    val rows = teams.chunked(8)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        rows.forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                row.forEach { code ->
+                    val isSelected = selected.contains(code)
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp)
+                            .border(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
+                                shape = RoundedCornerShape(6.dp)
+                            )
+                            .clickable { onToggle(code) },
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Text(text = code, fontSize = 12.sp)
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+            }
+        }
+    }
+}
+@Composable
+private fun WeekSelector(
+    availableWeeks: List<Int>,
+    initial: Int?,
+    onWeekSelected: (Int?) -> Unit
+) {
     var expanded by remember { mutableStateOf(false) }
-    val label = initial?.toString() ?: "Tutte le weeks"
+    val label = initial?.let { "Week $it" } ?: "Tutte le weeks"
+
     Box {
         Button(onClick = { expanded = true }) {
             Text(text = label)
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(text = { Text("Tutte le weeks") }, onClick = {
-                onWeekSelected(null); expanded = false
-            })
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("Tutte le weeks") },
+                onClick = {
+                    onWeekSelected(null)
+                    expanded = false
+                }
+            )
+
             availableWeeks.forEach { w ->
-                DropdownMenuItem(text = { Text("Week $w") }, onClick = {
-                    onWeekSelected(w); expanded = false
-                })
+                DropdownMenuItem(
+                    text = { Text("Week $w") },
+                    onClick = {
+                        onWeekSelected(w)
+                        expanded = false
+                    }
+                )
             }
         }
     }
 }
 
-@Composable
-private fun TeamSelector(availableTeams: List<String>, initial: String?, onTeamSelected: (String?) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    val label = initial ?: "Tutte le squadre"
-    Box {
-        Button(onClick = { expanded = true }) {
-            Text(text = label)
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(text = { Text("Tutte le squadre") }, onClick = {
-                onTeamSelected(null); expanded = false
-            })
-            availableTeams.forEach { t ->
-                DropdownMenuItem(text = { Text(t) }, onClick = {
-                    onTeamSelected(t); expanded = false
-                })
-            }
-        }
-    }
-}

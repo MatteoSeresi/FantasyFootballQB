@@ -44,8 +44,9 @@ class StatsViewModel : ViewModel() {
     private val _selectedWeek = MutableStateFlow<Int?>(null) // null => tutte le weeks
     val selectedWeek: StateFlow<Int?> = _selectedWeek.asStateFlow()
 
-    private val _selectedTeam = MutableStateFlow<String?>(null) // null => tutte le squadre
-    val selectedTeam: StateFlow<String?> = _selectedTeam.asStateFlow()
+    // ora multi-team: set di sigle selezionate (vuoto => tutte)
+    private val _selectedTeams = MutableStateFlow<Set<String>>(emptySet())
+    val selectedTeams: StateFlow<Set<String>> = _selectedTeams.asStateFlow()
 
     private val _searchQuery = MutableStateFlow<String>("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -122,7 +123,7 @@ class StatsViewModel : ViewModel() {
                 qbsCache.clear()
                 list.forEach { qbsCache[it.id] = it }
 
-                // aggiorna lista squadre disponibile (ordina alfabeticamente)
+                // aggiorna lista squadre disponibile (ordina alfabeticamente, uniche)
                 val teams = list.map { it.squadra }.filter { it.isNotBlank() }.distinct().sorted()
                 _availableTeams.value = teams
 
@@ -152,8 +153,16 @@ class StatsViewModel : ViewModel() {
         recomputeRows()
     }
 
-    fun setTeamFilter(team: String?) {
-        _selectedTeam.value = team
+    // toggle su singola squadra (multi-select)
+    fun toggleTeamSelection(team: String) {
+        val cur = _selectedTeams.value.toMutableSet()
+        if (cur.contains(team)) cur.remove(team) else cur.add(team)
+        _selectedTeams.value = cur
+        recomputeRows()
+    }
+
+    fun resetTeamsSelection() {
+        _selectedTeams.value = emptySet()
         recomputeRows()
     }
 
@@ -166,7 +175,7 @@ class StatsViewModel : ViewModel() {
     private fun recomputeRows() {
         try {
             val selWeek = _selectedWeek.value
-            val selTeam = _selectedTeam.value?.takeIf { it.isNotBlank() }
+            val selTeams = _selectedTeams.value // set (vuoto => tutti)
             val q = _searchQuery.value.trim().lowercase()
 
             // 1) filtra i weekstats docs in base a week (se selezionata)
@@ -207,16 +216,16 @@ class StatsViewModel : ViewModel() {
                 }
             }
 
-            // 3) adesso applica il filtro per squadra e per ricerca nome.
+            // 3) adesso applica il filtro per squadra (multi) e per ricerca nome.
             // Consideriamo soltanto i qb presenti in countEntries (GP>0)
             val candidateQbIds = countEntries.keys
 
             val rows = candidateQbIds.mapNotNull { qbId ->
                 val qb = qbsCache[qbId] ?: QB(id = qbId, nome = qbId, squadra = "", stato = "")
 
-                // filtro per squadra
-                if (selTeam != null && selTeam.isNotBlank()) {
-                    if (qb.squadra.lowercase() != selTeam.lowercase()) return@mapNotNull null
+                // filtro per squadra (multi): se selTeams vuoto => ok, altrimenti qb.squadra deve essere in set
+                if (selTeams.isNotEmpty()) {
+                    if (qb.squadra.isBlank() || !selTeams.contains(qb.squadra)) return@mapNotNull null
                 }
 
                 // filtro ricerca nome
@@ -234,7 +243,7 @@ class StatsViewModel : ViewModel() {
 
             _rows.value = rows
         } catch (e: Exception) {
-            Log.e("StatsVM", "recomputeRows error: ${e.message}", e)
+            Log.e("StatsVM", "recomputeRows error: ${e.message}")
         }
     }
 

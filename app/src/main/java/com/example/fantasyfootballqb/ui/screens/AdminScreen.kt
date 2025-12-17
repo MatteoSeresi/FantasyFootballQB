@@ -37,14 +37,22 @@ fun AdminScreen(
     val success by vm.success.collectAsState()
     val selectedWeek by vm.selectedWeek.collectAsState()
 
+    // flag che segnala se la week è già stata calcolata (tutte le games hanno partitaCalcolata == true)
+    val weekCalculated by vm.weekCalculated.collectAsState()
+
     var showUsersDialog by remember { mutableStateOf(false) }
     var showModifyGamesDialog by remember { mutableStateOf(false) }
     var showModifyQBsDialog by remember { mutableStateOf(false) }
 
+    // dialog di validazione / conferma calcolo
+    var showConfirmCalculateDialog by remember { mutableStateOf(false) }
+    var missingDataList by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showMissingDataDialog by remember { mutableStateOf(false) }
+
     val snackHost = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
-    // show snackbar when error/success change
+    // mostra snack quando cambia error / success
     LaunchedEffect(error) {
         if (!error.isNullOrBlank()) {
             snackHost.showSnackbar(error!!)
@@ -56,6 +64,11 @@ fun AdminScreen(
             snackHost.showSnackbar(success!!)
             vm.clearMessages()
         }
+    }
+
+    // quando cambia la selectedWeek, avvia l'osservazione dello stato "partitaCalcolata"
+    LaunchedEffect(selectedWeek) {
+        selectedWeek?.let { vm.observeWeekCalculated(it) }
     }
 
     Scaffold(snackbarHost = { SnackbarHost(snackHost) }) { padding ->
@@ -123,6 +136,7 @@ fun AdminScreen(
                                 weeks.forEach { w ->
                                     DropdownMenuItem(text = { Text("Week $w") }, onClick = {
                                         vm.setSelectedWeek(w); expanded = false
+                                        // l'osservazione dello stato weekCalculated parte nel LaunchedEffect
                                     })
                                 }
                             }
@@ -134,8 +148,34 @@ fun AdminScreen(
                         Button(onClick = { showModifyQBsDialog = true }, modifier = Modifier.fillMaxWidth()) {
                             Text("Modifica punteggi QBs")
                         }
-                        Button(onClick = { /* stub calcola */ }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) {
-                            Text("CALCOLA WEEK: ${selectedWeek ?: "-"}", color = Color.White)
+
+                        // Bottone CALCOLA WEEK -> prima valida, poi chiede conferma, poi esegue calculateWeek
+                        Button(
+                            onClick = {
+                                val w = selectedWeek
+                                if (w == null) {
+                                    coroutineScope.launch { snackHost.showSnackbar("Seleziona prima una week") }
+                                    return@Button
+                                }
+                                coroutineScope.launch {
+                                    // chiama la suspend validateWeek
+                                    val problems = vm.validateWeek(w)
+                                    if (problems.isNotEmpty()) {
+                                        missingDataList = problems
+                                        showMissingDataDialog = true
+                                    } else {
+                                        showConfirmCalculateDialog = true
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = (selectedWeek != null) && !weekCalculated,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
+                        ) {
+                            Text(
+                                if (weekCalculated) "Week già calcolata" else "CALCOLA WEEK: ${selectedWeek ?: "-"}",
+                                color = Color.White
+                            )
                         }
                     }
                 }
@@ -182,6 +222,38 @@ fun AdminScreen(
                         coroutineScope.launch { snackHost.showSnackbar(msg) }
                     }
                 )
+            }
+
+            // Dialog: dati mancanti
+            if (showMissingDataDialog) {
+                AlertDialog(onDismissRequest = { showMissingDataDialog = false }, title = { Text("Dati mancanti") }, text = {
+                    Column(modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
+                        Text("Non è possibile calcolare la week: mancano i seguenti dati:")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        missingDataList.forEach { item ->
+                            Text("- $item", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }, confirmButton = {
+                    TextButton(onClick = { showMissingDataDialog = false }) { Text("Chiudi") }
+                }, dismissButton = {})
+            }
+
+            // Dialog: conferma calcolo
+            if (showConfirmCalculateDialog) {
+                AlertDialog(onDismissRequest = { showConfirmCalculateDialog = false }, title = { Text("Conferma calcolo") }, text = {
+                    Text("Sei sicuro di voler calcolare la week ${selectedWeek ?: "-"}? Questa operazione la renderà definitiva.")
+                }, confirmButton = {
+                    TextButton(onClick = {
+                        showConfirmCalculateDialog = false
+                        val w = selectedWeek
+                        if (w != null) {
+                            vm.calculateWeek(w)
+                        }
+                    }) { Text("Conferma") }
+                }, dismissButton = {
+                    TextButton(onClick = { showConfirmCalculateDialog = false }) { Text("Annulla") }
+                })
             }
 
             if (loading) {
@@ -297,8 +369,7 @@ private fun ModifyGamesDialog(week: Int?, games: List<Game>, onDismiss: () -> Un
 }
 
 /**
- * ModifyQBsDialog: ora carica i weekstats per la partita selezionata e mostra SOLO i QBs associati.
- * Se non ci sono weekstats per la partita mostra un messaggio (puoi estendere per permettere di selezionarli manualmente).
+ * ModifyQBsDialog: carica i weekstats per la partita selezionata e mostra SOLO i QBs associati.
  */
 @Composable
 private fun ModifyQBsDialog(
@@ -381,11 +452,7 @@ private fun ModifyQBsDialog(
 
                                     TextButton(onClick = {
                                         // espandi / richiudi
-                                        if (expandedGameId == g.id) {
-                                            expandedGameId = null
-                                        } else {
-                                            expandedGameId = g.id
-                                        }
+                                        expandedGameId = if (expandedGameId == g.id) null else g.id
                                     }) {
                                         Text(if (expandedGameId == g.id) "Chiudi" else "Apri")
                                     }
@@ -478,4 +545,3 @@ private fun ModifyQBsDialog(
         dismissButton = {}
     )
 }
-

@@ -6,5 +6,6 @@ data class Game(
     val squadraCasa: String = "",
     val squadraOspite: String = "",
     val partitaGiocata: Boolean = false,
+    val partitaCalcolata: Boolean = false,
     val risultato: String? = null
 )

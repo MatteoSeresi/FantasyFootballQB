@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.fantasyfootballqb.models.Game
 import com.example.fantasyfootballqb.models.QB
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,6 +48,12 @@ class AdminViewModel : ViewModel() {
 
     private val _selectedWeek = MutableStateFlow<Int?>(null)
     val selectedWeek: StateFlow<Int?> = _selectedWeek
+
+    // stato week calcolata (true se tutte le games della week hanno partitaCalcolata == true)
+    private val _weekCalculated = MutableStateFlow(false)
+    val weekCalculated: StateFlow<Boolean> = _weekCalculated
+
+    private var weekGamesListener: ListenerRegistration? = null
 
     init {
         observeUsers()
@@ -95,7 +102,8 @@ class AdminViewModel : ViewModel() {
                             squadraCasa = d.getString("squadraCasa") ?: "",
                             squadraOspite = d.getString("squadraOspite") ?: "",
                             partitaGiocata = d.getBoolean("partitaGiocata") ?: false,
-                            risultato = d.getString("risultato")
+                            risultato = d.getString("risultato"),
+                            partitaCalcolata = d.getBoolean("partitaCalcolata") ?: false
                         )
                     } catch (e: Exception) {
                         null
@@ -162,8 +170,7 @@ class AdminViewModel : ViewModel() {
             try {
                 _loading.value = true
                 val map: MutableMap<String, Any?> = mutableMapOf("partitaGiocata" to partitaGiocata)
-                // risultato può essere null -> permettiamo Any?
-                map["risultato"] = risultato // risultato or null
+                map["risultato"] = risultato
                 db.collection("games").document(gameId).set(map, SetOptions.merge()).await()
                 _success.value = "Partita aggiornata"
             } catch (e: Exception) {
@@ -210,5 +217,179 @@ class AdminViewModel : ViewModel() {
     fun clearMessages() {
         _error.value = null
         _success.value = null
+    }
+
+    /**
+     * Observe weekCalculated (true se tutte le games della week hanno partitaCalcolata == true)
+     */
+    fun observeWeekCalculated(week: Int) {
+        weekGamesListener?.remove()
+        weekGamesListener = db.collection("games")
+            .whereEqualTo("weekNumber", week)
+            .addSnapshotListener { snaps, err ->
+                if (err != null) {
+                    _weekCalculated.value = false
+                    return@addSnapshotListener
+                }
+                val docs = snaps?.documents ?: emptyList()
+                if (docs.isEmpty()) {
+                    _weekCalculated.value = false
+                } else {
+                    val allCalculated = docs.all { it.getBoolean("partitaCalcolata") == true }
+                    _weekCalculated.value = allCalculated
+                }
+            }
+    }
+
+    /**
+     * Nuova funzione: valida la week (senza modificare DB).
+     * Ritorna una lista di messaggi (vuota = tutto ok).
+     */
+    suspend fun validateWeek(week: Int): List<String> {
+        val problems = mutableListOf<String>()
+        try {
+            val gamesSnap = db.collection("games").whereEqualTo("weekNumber", week).get().await()
+            val gamesDocs = gamesSnap.documents
+            if (gamesDocs.isEmpty()) {
+                problems.add("Nessuna partita per la week $week")
+                return problems
+            }
+
+            // verifica partite giocate
+            val notPlayed = mutableListOf<String>()
+            for (g in gamesDocs) {
+                val played = g.getBoolean("partitaGiocata") == true
+                if (!played) {
+                    val label = "${g.getString("squadraCasa") ?: "?"} vs ${g.getString("squadraOspite") ?: "?"}"
+                    notPlayed.add(label)
+                }
+            }
+            if (notPlayed.isNotEmpty()) {
+                problems.add("Partite non giocate: ${notPlayed.joinToString(" ; ")}")
+            }
+
+            // verifica weekstats per ogni partita (esistenza e punteggi numerici)
+            val missingStats = mutableListOf<String>()
+            for (g in gamesDocs) {
+                val gameId = g.id
+                val wsSnap = db.collection("weekstats").whereEqualTo("game_id", gameId).get().await()
+                if (wsSnap.isEmpty) {
+                    val label = "${g.getString("squadraCasa") ?: "?"} vs ${g.getString("squadraOspite") ?: "?"}"
+                    missingStats.add("$label -> nessun weekstats")
+                    continue
+                }
+
+                val invalid = wsSnap.documents.any { doc ->
+                    val raw = doc.get("punteggioQB")
+                    when (raw) {
+                        is Number -> false
+                        is String -> raw.toDoubleOrNull() == null
+                        else -> true
+                    }
+                }
+                if (invalid) {
+                    val label = "${g.getString("squadraCasa") ?: "?"} vs ${g.getString("squadraOspite") ?: "?"}"
+                    missingStats.add("$label -> weekstats senza punteggio valido")
+                }
+            }
+            if (missingStats.isNotEmpty()) {
+                problems.addAll(missingStats)
+            }
+
+        } catch (e: Exception) {
+            Log.e("AdminVM", "validateWeek: ${e.message}", e)
+            problems.add("Errore durante la validazione: ${e.message}")
+        }
+        return problems
+    }
+
+    /**
+     * calculateWeek: come prima — valida (anche se chiamato direttamente), poi setta partitaCalcolata=true via batch
+     */
+    fun calculateWeek(week: Int) {
+        viewModelScope.launch {
+            _loading.value = true
+            _error.value = null
+            _success.value = null
+            try {
+                // 1) prendi tutte le games della week
+                val gamesSnap = db.collection("games").whereEqualTo("weekNumber", week).get().await()
+                val gamesDocs = gamesSnap.documents
+                if (gamesDocs.isEmpty()) {
+                    _error.value = "Nessuna partita trovata per la week $week"
+                    return@launch
+                }
+
+                // 2) verifica che tutte le partite siano giocate
+                val notPlayed = mutableListOf<String>()
+                for (g in gamesDocs) {
+                    val played = g.getBoolean("partitaGiocata") == true
+                    if (!played) {
+                        val label = "${g.getString("squadraCasa") ?: "?"} vs ${g.getString("squadraOspite") ?: "?"}"
+                        notPlayed.add(label)
+                    }
+                }
+                if (notPlayed.isNotEmpty()) {
+                    _error.value = "Non tutte le partite sono giocate:\n" + notPlayed.joinToString("\n")
+                    return@launch
+                }
+
+                // 3) verifica weekstats per ogni partita: esistenza e punteggio numerico
+                val missingStats = mutableListOf<String>()
+                for (g in gamesDocs) {
+                    val gameId = g.id
+                    val wsSnap = db.collection("weekstats").whereEqualTo("game_id", gameId).get().await()
+                    if (wsSnap.isEmpty) {
+                        val label = "${g.getString("squadraCasa") ?: "?"} vs ${g.getString("squadraOspite") ?: "?"}"
+                        missingStats.add("$label -> nessun weekstats")
+                        continue
+                    }
+
+                    val invalid = wsSnap.documents.any { doc ->
+                        val raw = doc.get("punteggioQB")
+                        when (raw) {
+                            is Number -> false
+                            is String -> raw.toDoubleOrNull() == null
+                            else -> true
+                        }
+                    }
+                    if (invalid) {
+                        val label = "${g.getString("squadraCasa") ?: "?"} vs ${g.getString("squadraOspite") ?: "?"}"
+                        missingStats.add("$label -> weekstats senza punteggio valido")
+                    }
+                }
+                if (missingStats.isNotEmpty()) {
+                    _error.value = "Ci sono partite senza punteggi completi:\n" + missingStats.joinToString("\n")
+                    return@launch
+                }
+
+                // 4) tutto ok -> batch update partitaCalcolata = true per tutte le games della week che non lo sono
+                val batch = db.batch()
+                var updates = 0
+                for (g in gamesDocs) {
+                    val already = g.getBoolean("partitaCalcolata") == true
+                    if (!already) {
+                        batch.update(g.reference, mapOf("partitaCalcolata" to true))
+                        updates++
+                    }
+                }
+                if (updates == 0) {
+                    _error.value = "La week $week è già stata calcolata."
+                } else {
+                    batch.commit().await()
+                    _success.value = "Week $week marcata come calcolata"
+                }
+            } catch (e: Exception) {
+                Log.e("AdminVM", "calculateWeek: ${e.message}", e)
+                _error.value = e.message
+            } finally {
+                _loading.value = false
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        weekGamesListener?.remove()
     }
 }

@@ -131,7 +131,7 @@ fun TeamScreen(
                                         Spacer(modifier = Modifier.height(8.dp))
                                         Text(
                                             "La possibilità di schierare la formazione per questa week è terminata. " +
-                                                    "Se avevi già una formazione non verrà accettata perché la week è stata già calcolata.",
+                                                    "Non è possibile schierare la formazione retroattivamente per questa week.",
                                             textAlign = TextAlign.Center
                                         )
                                     }

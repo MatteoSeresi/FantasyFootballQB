@@ -4,6 +4,8 @@ import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Login
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,6 +27,7 @@ fun LoginScreen(
 
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -52,7 +55,26 @@ fun LoginScreen(
                     label = { Text("Password") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    visualTransformation = PasswordVisualTransformation()
+                    visualTransformation = if (passwordVisible)
+                        VisualTransformation.None
+                    else
+                        PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = {
+                            passwordVisible = !passwordVisible
+                        }) {
+                            Icon(
+                                imageVector = if (passwordVisible)
+                                    Icons.Default.VisibilityOff
+                                else
+                                    Icons.Default.Visibility,
+                                contentDescription = if (passwordVisible)
+                                    "Nascondi password"
+                                else
+                                    "Mostra password"
+                            )
+                        }
+                    }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -87,7 +109,7 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
                 TextButton(onClick = onRegister) {
-                    Text("Vai a Registrazione")
+                    Text("Non sei registrato? Registrati adesso")
                 }
             }
 

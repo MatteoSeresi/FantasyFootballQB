@@ -16,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.fantasyfootballqb.ui.viewmodel.StatRow
 import com.example.fantasyfootballqb.ui.viewmodel.StatsViewModel
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -24,6 +23,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.defaultMinSize
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -265,20 +267,22 @@ private fun TeamsGridMulti(
     selected: Set<String>,
     onToggle: (String) -> Unit
 ) {
-    // Assicuriamoci di prendere esattamente 32 elementi
     val teams = if (allTeams.size >= 32) allTeams.take(32) else buildDefaultTeamList(allTeams)
-
-    // chunk in 4 righe di 8 colonne
     val rows = teams.chunked(8)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         rows.forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 row.forEach { code ->
                     val isSelected = selected.contains(code)
+
                     Surface(
                         modifier = Modifier
                             .weight(1f)
                             .height(36.dp)
+                            .defaultMinSize(minWidth = 36.dp) // garantisce larghezza minima
                             .border(
                                 width = if (isSelected) 2.dp else 1.dp,
                                 color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
@@ -288,16 +292,23 @@ private fun TeamsGridMulti(
                         shape = RoundedCornerShape(6.dp),
                         color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent
                     ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            Text(text = code, fontSize = 12.sp)
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp)) {
+                            Text(
+                                text = code,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center
+                            )
                         }
                     }
-                    Spacer(modifier = Modifier.width(4.dp))
                 }
             }
         }
     }
 }
+
+
 @Composable
 private fun WeekSelector(
     availableWeeks: List<Int>,

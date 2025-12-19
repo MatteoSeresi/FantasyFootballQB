@@ -51,6 +51,9 @@ fun AdminScreen(
     var showModifyFormationsDialog by remember { mutableStateOf(false) }
     var editingFormationRow by remember { mutableStateOf<UserFormationRow?>(null) }
 
+    // NEW: week *specifica* per il dialog "Modifica formazioni utenti" (separata dalla selectedWeek principale)
+    var modifyFormationsWeek by remember { mutableStateOf<Int?>(selectedWeek) }
+
     // dialog di validazione / conferma calcolo
     var showConfirmCalculateDialog by remember { mutableStateOf(false) }
     var missingDataList by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -73,11 +76,10 @@ fun AdminScreen(
         }
     }
 
-    // quando cambia la selectedWeek, avvia l'osservazione dello stato "partitaCalcolata" e ricarica formations
+    // quando cambia la selectedWeek (quella del calcolo), avvia l'osservazione dello stato "partitaCalcolata"
     LaunchedEffect(selectedWeek) {
         selectedWeek?.let {
             vm.observeWeekCalculated(it)
-            vm.loadUserFormationsForWeek(it)
         }
     }
 
@@ -121,7 +123,10 @@ fun AdminScreen(
 
                         // Modifica formazione utente
                         Button(onClick = {
-                            vm.loadUserFormationsForWeek(selectedWeek)
+                            // init dialog week independentemente dalla selectedWeek principale
+                            modifyFormationsWeek = selectedWeek ?: weeks.firstOrNull()
+                            // carica le formations per la week iniziale del dialog
+                            vm.loadUserFormationsForWeek(modifyFormationsWeek)
                             showModifyFormationsDialog = true
                         }, modifier = Modifier.fillMaxWidth()) {
                             Text("Modifica formazione utente")
@@ -241,35 +246,46 @@ fun AdminScreen(
                 )
             }
 
-            // ModifyFormationsDialog (list of users & their formation for selected week)
+            // ModifyFormationsDialog (list of users & their formation for modifyFormationsWeek, independent from selectedWeek)
             if (showModifyFormationsDialog) {
                 ModifyFormationsDialog(
-                    selectedWeek = selectedWeek,
+                    selectedWeek = modifyFormationsWeek,
+                    availableWeeks = weeks,
                     userFormations = userFormations,
                     allUsers = users,
                     onDismiss = { showModifyFormationsDialog = false },
+                    onWeekSelected = { newWeek ->
+                        modifyFormationsWeek = newWeek
+                        vm.loadUserFormationsForWeek(newWeek)
+                    },
                     onEdit = { row ->
                         editingFormationRow = row
                     }
                 )
             }
 
-            // Edit single formation
-            if (editingFormationRow != null && selectedWeek != null) {
-                EditFormationDialog(
-                    userFormation = editingFormationRow!!,
-                    week = selectedWeek!!,
-                    qbs = qbs,
-                    onDismiss = {
-                        editingFormationRow = null
-                        vm.loadUserFormationsForWeek(selectedWeek)
-                    },
-                    onSave = { uid, weekNum, qbIds ->
-                        vm.updateUserFormation(uid, weekNum, qbIds)
-                        editingFormationRow = null
-                        vm.loadUserFormationsForWeek(selectedWeek)
-                    }
-                )
+            // Edit single formation -> pass the modifyFormationsWeek (the week selected inside the modify dialog)
+            if (editingFormationRow != null) {
+                // ensure we pass the dialog-local week (modifyFormationsWeek)
+                val targetWeek = modifyFormationsWeek
+                if (targetWeek != null) {
+                    EditFormationDialog(
+                        userFormation = editingFormationRow!!,
+                        week = targetWeek,
+                        availableWeeks = weeks,
+                        qbs = qbs,
+                        onDismiss = {
+                            editingFormationRow = null
+                            // reload for the currently selected dialog week
+                            vm.loadUserFormationsForWeek(modifyFormationsWeek)
+                        },
+                        onSave = { uid, weekNum, qbIds ->
+                            vm.updateUserFormation(uid, weekNum, qbIds)
+                            editingFormationRow = null
+                            vm.loadUserFormationsForWeek(modifyFormationsWeek)
+                        }
+                    )
+                }
             }
 
             // Dialog: dati mancanti
@@ -577,24 +593,57 @@ private fun ModifyQBsDialog(
 @Composable
 private fun ModifyFormationsDialog(
     selectedWeek: Int?,
+    availableWeeks: List<Int>,
     userFormations: List<UserFormationRow>,
     allUsers: List<AdminUser>,
     onDismiss: () -> Unit,
+    onWeekSelected: (Int?) -> Unit,
     onEdit: (UserFormationRow) -> Unit
 ) {
     // show only non-admin users: map by uid
     val nonAdminUsersMap = allUsers.filter { !it.isAdmin }.associateBy { it.uid }
 
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Modifica formazioni utenti") }, text = {
-        Column(modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
+    // local week state inside this dialog (separata dal selectedWeek principale)
+    var selectedWeekLocal by remember { mutableStateOf<Int?>(selectedWeek) }
+    // when selectedWeekLocal changes, notify parent so it can load data
+    LaunchedEffect(selectedWeekLocal) {
+        onWeekSelected(selectedWeekLocal)
+    }
+
+    // dropdown expanded state
+    var expandedWeek by remember { mutableStateOf(false) }
+
+    AlertDialog(onDismissRequest = onDismiss, title = {
+        Column {
+            Text("Modifica formazioni utenti")
+            Spacer(modifier = Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Week: ", modifier = Modifier.padding(end = 8.dp))
-                Text(selectedWeek?.toString() ?: "-", fontWeight = FontWeight.SemiBold)
+                Text("Week:", modifier = Modifier.padding(end = 8.dp))
+                Box {
+                    Button(onClick = { expandedWeek = true }) {
+                        Text(selectedWeekLocal?.toString() ?: "Seleziona week")
+                    }
+                    DropdownMenu(expanded = expandedWeek, onDismissRequest = { expandedWeek = false }) {
+                        DropdownMenuItem(text = { Text("Seleziona week") }, onClick = {
+                            selectedWeekLocal = null
+                            expandedWeek = false
+                        })
+                        availableWeeks.forEach { w ->
+                            DropdownMenuItem(text = { Text("Week $w") }, onClick = {
+                                selectedWeekLocal = w
+                                expandedWeek = false
+                            })
+                        }
+                    }
+                }
             }
+        }
+    }, text = {
+        Column(modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            if (selectedWeek == null) {
-                Text("Seleziona una week dalla schermata principale per modificare le formazioni.")
+            if (selectedWeekLocal == null) {
+                Text("Seleziona una week per vedere e modificare le formations.")
             } else {
                 if (userFormations.isEmpty()) {
                     Text("Nessuna formation trovata per questa week")
@@ -609,10 +658,8 @@ private fun ModifyFormationsDialog(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(user.username ?: user.email, fontWeight = FontWeight.SemiBold)
                                     Spacer(modifier = Modifier.height(2.dp))
+                                    // show total score only (no QB list)
                                     Text("Punteggio totale: ${uf.totalWeekScore.toInt()}", style = MaterialTheme.typography.bodySmall)
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    val qbsText = if (uf.qbIds.isEmpty()) "-" else uf.qbIds.joinToString(", ")
-                                    Text("QB: $qbsText", style = MaterialTheme.typography.bodySmall)
                                 }
                                 Button(onClick = { onEdit(uf) }) {
                                     Text("Modifica")
@@ -633,10 +680,12 @@ private fun ModifyFormationsDialog(
 private fun EditFormationDialog(
     userFormation: UserFormationRow,
     week: Int,
+    availableWeeks: List<Int>,
     qbs: List<QB>,
     onDismiss: () -> Unit,
     onSave: (uid: String, week: Int, qbIds: List<String>) -> Unit
 ) {
+    // slots for the 3 QB ids
     val slots = remember { mutableStateListOf<String>() }
     LaunchedEffect(userFormation) {
         slots.clear()
@@ -646,9 +695,29 @@ private fun EditFormationDialog(
 
     var errorMsg by remember { mutableStateOf<String?>(null) }
 
+    // local week selection inside edit dialog (so you can change the week where to save this formation)
+    var weekLocal by remember { mutableStateOf(week) }
+    var expandedWeek by remember { mutableStateOf(false) }
+
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Modifica formazione: ${userFormation.username}") }, text = {
         Column(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
-            Text("Week $week")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Week:", modifier = Modifier.padding(end = 8.dp))
+                Box {
+                    Button(onClick = { expandedWeek = true }) {
+                        Text(weekLocal.toString())
+                    }
+                    DropdownMenu(expanded = expandedWeek, onDismissRequest = { expandedWeek = false }) {
+                        availableWeeks.forEach { w ->
+                            DropdownMenuItem(text = { Text("Week $w") }, onClick = {
+                                weekLocal = w
+                                expandedWeek = false
+                            })
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
             for (i in 0 until 3) {
@@ -670,15 +739,13 @@ private fun EditFormationDialog(
                                     expanded = false
                                 })
                             }
+                            // allow clearing selection per slot
                             DropdownMenuItem(text = { Text("Rimuovi selezione") }, onClick = {
                                 slots[i] = ""
                                 expanded = false
                             })
                         }
                     }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-                    TextButton(onClick = { slots[i] = "" }) { Text("Clear") }
                 }
             }
 
@@ -698,7 +765,7 @@ private fun EditFormationDialog(
                 errorMsg = "I 3 QB devono essere distinti."
                 return@TextButton
             }
-            onSave(userFormation.uid, week, ids)
+            onSave(userFormation.uid, weekLocal, ids)
         }) {
             Text("Salva")
         }

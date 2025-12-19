@@ -1,6 +1,7 @@
 package com.example.fantasyfootballqb.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,13 +15,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.fantasyfootballqb.ui.viewmodel.AdminViewModel
 import com.example.fantasyfootballqb.ui.viewmodel.AdminUser
+import com.example.fantasyfootballqb.ui.viewmodel.UserFormationRow
 import com.example.fantasyfootballqb.models.Game
 import com.example.fantasyfootballqb.models.QB
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clip
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 
 @Composable
@@ -40,9 +42,14 @@ fun AdminScreen(
     // flag che segnala se la week è già stata calcolata (tutte le games hanno partitaCalcolata == true)
     val weekCalculated by vm.weekCalculated.collectAsState()
 
+    // states for modify-formation flow
+    val userFormations by vm.userFormations.collectAsState()
+
     var showUsersDialog by remember { mutableStateOf(false) }
     var showModifyGamesDialog by remember { mutableStateOf(false) }
     var showModifyQBsDialog by remember { mutableStateOf(false) }
+    var showModifyFormationsDialog by remember { mutableStateOf(false) }
+    var editingFormationRow by remember { mutableStateOf<UserFormationRow?>(null) }
 
     // dialog di validazione / conferma calcolo
     var showConfirmCalculateDialog by remember { mutableStateOf(false) }
@@ -66,9 +73,12 @@ fun AdminScreen(
         }
     }
 
-    // quando cambia la selectedWeek, avvia l'osservazione dello stato "partitaCalcolata"
+    // quando cambia la selectedWeek, avvia l'osservazione dello stato "partitaCalcolata" e ricarica formations
     LaunchedEffect(selectedWeek) {
-        selectedWeek?.let { vm.observeWeekCalculated(it) }
+        selectedWeek?.let {
+            vm.observeWeekCalculated(it)
+            vm.loadUserFormationsForWeek(it)
+        }
     }
 
     Scaffold(snackbarHost = { SnackbarHost(snackHost) }) { padding ->
@@ -108,7 +118,12 @@ fun AdminScreen(
                         Button(onClick = { showUsersDialog = true }, modifier = Modifier.fillMaxWidth()) {
                             Text("Modifica dati utente")
                         }
-                        Button(onClick = { /* stub */ }, modifier = Modifier.fillMaxWidth()) {
+
+                        // Modifica formazione utente
+                        Button(onClick = {
+                            vm.loadUserFormationsForWeek(selectedWeek)
+                            showModifyFormationsDialog = true
+                        }, modifier = Modifier.fillMaxWidth()) {
                             Text("Modifica formazione utente")
                         }
                     }
@@ -136,7 +151,6 @@ fun AdminScreen(
                                 weeks.forEach { w ->
                                     DropdownMenuItem(text = { Text("Week $w") }, onClick = {
                                         vm.setSelectedWeek(w); expanded = false
-                                        // l'osservazione dello stato weekCalculated parte nel LaunchedEffect
                                     })
                                 }
                             }
@@ -187,20 +201,22 @@ fun AdminScreen(
                 }
             }
 
-            // Dialogs
+            // ---------------- Dialogs ----------------
+
+            // Users dialog
             if (showUsersDialog) {
                 UsersDialog(users = users, onDismiss = { showUsersDialog = false }, onSave = { u, newEmail, newUsername, newNomeTeam ->
                     vm.updateUserData(u.uid, newEmail, newUsername, newNomeTeam)
                 })
             }
 
+            // ModifyGamesDialog
             if (showModifyGamesDialog) {
                 val gamesForWeek = selectedWeek?.let { gamesByWeek[it] } ?: emptyList()
                 ModifyGamesDialog(
                     week = selectedWeek,
                     games = gamesForWeek,
                     onDismiss = { showModifyGamesDialog = false },
-                    // IMPORTANT: if result is not blank -> set partitaGiocata = true
                     onSaveGame = { gameId, _partitaGiocataIgnored, risultato ->
                         val played = risultato?.isNotBlank() == true
                         vm.updateGame(gameId, played, risultato)
@@ -208,6 +224,7 @@ fun AdminScreen(
                 )
             }
 
+            // ModifyQBsDialog
             if (showModifyQBsDialog) {
                 val gamesForWeek = selectedWeek?.let { gamesByWeek[it] } ?: emptyList()
                 ModifyQBsDialog(
@@ -220,6 +237,37 @@ fun AdminScreen(
                     },
                     onShowMessage = { msg ->
                         coroutineScope.launch { snackHost.showSnackbar(msg) }
+                    }
+                )
+            }
+
+            // ModifyFormationsDialog (list of users & their formation for selected week)
+            if (showModifyFormationsDialog) {
+                ModifyFormationsDialog(
+                    selectedWeek = selectedWeek,
+                    userFormations = userFormations,
+                    allUsers = users,
+                    onDismiss = { showModifyFormationsDialog = false },
+                    onEdit = { row ->
+                        editingFormationRow = row
+                    }
+                )
+            }
+
+            // Edit single formation
+            if (editingFormationRow != null && selectedWeek != null) {
+                EditFormationDialog(
+                    userFormation = editingFormationRow!!,
+                    week = selectedWeek!!,
+                    qbs = qbs,
+                    onDismiss = {
+                        editingFormationRow = null
+                        vm.loadUserFormationsForWeek(selectedWeek)
+                    },
+                    onSave = { uid, weekNum, qbIds ->
+                        vm.updateUserFormation(uid, weekNum, qbIds)
+                        editingFormationRow = null
+                        vm.loadUserFormationsForWeek(selectedWeek)
                     }
                 )
             }
@@ -265,8 +313,11 @@ fun AdminScreen(
     }
 }
 
-/* ----- Dialogs ----- */
+/* ---------------- Dialogs used above ---------------- */
 
+/**
+ * UsersDialog: come prima, mostra lista utenti e permette modifica.
+ */
 @Composable
 private fun UsersDialog(users: List<AdminUser>, onDismiss: () -> Unit, onSave: (AdminUser, String, String, String) -> Unit) {
     var editingUser by remember { mutableStateOf<AdminUser?>(null) }
@@ -298,14 +349,14 @@ private fun UsersDialog(users: List<AdminUser>, onDismiss: () -> Unit, onSave: (
         val u = editingUser!!
         var newEmail by remember { mutableStateOf(u.email) }
         var newUsername by remember { mutableStateOf(u.username) }
-        var newNomeTeam by remember { mutableStateOf(u.nomeTeam) }
+        var newNomeTeam by remember { mutableStateOf(u.nomeTeam ?: "") }
 
         AlertDialog(onDismissRequest = { editingUser = null }, title = { Text("Modifica utente") }, text = {
             Column {
                 OutlinedTextField(value = newEmail, onValueChange = { newEmail = it }, label = { Text("Email (solo Firestore)") })
                 OutlinedTextField(value = newUsername, onValueChange = { newUsername = it }, label = { Text("Username") })
                 OutlinedTextField(value = newNomeTeam, onValueChange = { newNomeTeam = it }, label = { Text("Nome squadra") })
-                Text("Nota: la modifica dell'email qui aggiorna solo il documento Firestore. Per cambiare la email in Firebase Authentication è necessario usare Admin SDK.")
+                Text("Nota: la modifica dell'email qui aggiorna solo il documento Firestore.")
             }
         }, confirmButton = {
             TextButton(onClick = {
@@ -319,8 +370,7 @@ private fun UsersDialog(users: List<AdminUser>, onDismiss: () -> Unit, onSave: (
 }
 
 /**
- * ModifyGamesDialog: ora mostra solo campo risultato.
- * Quando si salva, se risultato non vuoto => partitaGiocata = true.
+ * ModifyGamesDialog: modifica risultato -> imposta partitaGiocata true se risultato non vuoto
  */
 @Composable
 private fun ModifyGamesDialog(week: Int?, games: List<Game>, onDismiss: () -> Unit, onSaveGame: (String, Boolean, String?) -> Unit) {
@@ -334,8 +384,7 @@ private fun ModifyGamesDialog(week: Int?, games: List<Game>, onDismiss: () -> Un
             } else {
                 LazyColumn {
                     items(localGames) { g ->
-                        val gameIndex = localGames.indexOfFirst { it.id == g.id }
-                        val gameState = localGames.getOrNull(gameIndex) ?: g
+                        val gameState = localGames.firstOrNull { it.id == g.id } ?: g
                         Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                             Text("${g.squadraCasa} - ${g.squadraOspite}", fontWeight = FontWeight.SemiBold)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -369,7 +418,7 @@ private fun ModifyGamesDialog(week: Int?, games: List<Game>, onDismiss: () -> Un
 }
 
 /**
- * ModifyQBsDialog: carica i weekstats per la partita selezionata e mostra SOLO i QBs associati.
+ * ModifyQBsDialog: carica i weekstats per la partita selezionata e mostra i QBs associati.
  */
 @Composable
 private fun ModifyQBsDialog(
@@ -380,23 +429,17 @@ private fun ModifyQBsDialog(
     onSaveScore: (String, String, Double) -> Unit,
     onShowMessage: (String) -> Unit
 ) {
-    // quale partita è espansa (mostra i QB per quella partita)
     var expandedGameId by remember { mutableStateOf<String?>(null) }
-
-    // mappa gameId -> (qbId -> scoreString)
     val localScoresState = remember { mutableStateMapOf<String, MutableMap<String, String>>() }
 
-    // funzione per caricare weekstats per una partita (popola localScoresState[gameId])
     suspend fun loadWeekstatsForGame(gameId: String, teamHome: String, teamAway: String) {
         try {
             val db = FirebaseFirestore.getInstance()
-            // fetch weekstats per gameId
             val snap = db.collection("weekstats")
                 .whereEqualTo("game_id", gameId)
                 .get()
                 .await()
 
-            // map qbId -> punteggio (string)
             val scoresFromDB = mutableMapOf<String, String>()
             for (doc in snap.documents) {
                 val qbId = doc.getString("qb_id") ?: continue
@@ -409,15 +452,9 @@ private fun ModifyQBsDialog(
                 scoresFromDB[qbId] = scoreStr
             }
 
-            // get QBs for the two teams (home + away)
             val qbsForGame = allQBs.filter { it.squadra == teamHome || it.squadra == teamAway }
-
-            // inizializza inner map con i qbs della partita (valori presi da DB se presenti, altrimenti "")
             val inner = mutableMapOf<String, String>()
-            qbsForGame.forEach { qb ->
-                inner[qb.id] = scoresFromDB[qb.id] ?: ""
-            }
-
+            qbsForGame.forEach { qb -> inner[qb.id] = scoresFromDB[qb.id] ?: "" }
             localScoresState[gameId] = inner
         } catch (e: Exception) {
             onShowMessage("Errore caricamento weekstats: ${e.message}")
@@ -434,7 +471,6 @@ private fun ModifyQBsDialog(
                     return@Column
                 }
 
-                // Lista partite (card per partita). La lista è scrollabile (LazyColumn)
                 LazyColumn {
                     items(games) { g ->
                         Card(modifier = Modifier
@@ -451,39 +487,30 @@ private fun ModifyQBsDialog(
                                     }
 
                                     TextButton(onClick = {
-                                        // espandi / richiudi
                                         expandedGameId = if (expandedGameId == g.id) null else g.id
                                     }) {
                                         Text(if (expandedGameId == g.id) "Chiudi" else "Apri")
                                     }
                                 }
 
-                                // se questa partita è espansa, mostriamo i QBs associati alle squadre
                                 if (expandedGameId == g.id) {
                                     Spacer(modifier = Modifier.height(8.dp))
 
                                     if (!g.partitaGiocata) {
-                                        // non permettere la modifica se partita non giocata
                                         Text("Impossibile modificare i punteggi: la partita non è ancora stata disputata.")
                                     } else {
-                                        // Carichiamo weekstats per questa partita la prima volta:
                                         LaunchedEffect(g.id) {
                                             if (!localScoresState.containsKey(g.id)) {
-                                                // scarica weekstats e popola mappe locali
                                                 loadWeekstatsForGame(g.id, g.squadraCasa, g.squadraOspite)
                                             }
                                         }
 
-                                        // Otteniamo la inner map (potrebbe essere null se ancora in caricamento)
                                         val inner = localScoresState[g.id]
-
                                         if (inner == null) {
-                                            // caricamento in corso
                                             Box(modifier = Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
                                                 CircularProgressIndicator()
                                             }
                                         } else {
-                                            // Lista QBs per questa partita: prendi i QB dalla inner map keys (ma vogliamo visualizzare i dettagli dal allQBs)
                                             val qbsForGame = allQBs.filter { it.squadra == g.squadraCasa || it.squadra == g.squadraOspite }
                                             if (qbsForGame.isEmpty()) {
                                                 Text("Nessun QB trovato per le squadre di questa partita.")
@@ -502,7 +529,6 @@ private fun ModifyQBsDialog(
                                                             value = textState,
                                                             onValueChange = { v ->
                                                                 textState = v
-                                                                // aggiorna la inner map in localScoresState
                                                                 val m = localScoresState[g.id] ?: mutableMapOf()
                                                                 m[qb.id] = v
                                                                 localScoresState[g.id] = m
@@ -544,4 +570,139 @@ private fun ModifyQBsDialog(
         },
         dismissButton = {}
     )
+}
+
+/* ---------------- ModifyFormationsDialog & EditFormationDialog ---------------- */
+
+@Composable
+private fun ModifyFormationsDialog(
+    selectedWeek: Int?,
+    userFormations: List<UserFormationRow>,
+    allUsers: List<AdminUser>,
+    onDismiss: () -> Unit,
+    onEdit: (UserFormationRow) -> Unit
+) {
+    // show only non-admin users: map by uid
+    val nonAdminUsersMap = allUsers.filter { !it.isAdmin }.associateBy { it.uid }
+
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Modifica formazioni utenti") }, text = {
+        Column(modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Week: ", modifier = Modifier.padding(end = 8.dp))
+                Text(selectedWeek?.toString() ?: "-", fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (selectedWeek == null) {
+                Text("Seleziona una week dalla schermata principale per modificare le formazioni.")
+            } else {
+                if (userFormations.isEmpty()) {
+                    Text("Nessuna formation trovata per questa week")
+                } else {
+                    LazyColumn {
+                        items(userFormations) { uf ->
+                            val user = nonAdminUsersMap[uf.uid] ?: return@items
+                            Row(modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(user.username ?: user.email, fontWeight = FontWeight.SemiBold)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text("Punteggio totale: ${uf.totalWeekScore.toInt()}", style = MaterialTheme.typography.bodySmall)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    val qbsText = if (uf.qbIds.isEmpty()) "-" else uf.qbIds.joinToString(", ")
+                                    Text("QB: $qbsText", style = MaterialTheme.typography.bodySmall)
+                                }
+                                Button(onClick = { onEdit(uf) }) {
+                                    Text("Modifica")
+                                }
+                            }
+                            Divider()
+                        }
+                    }
+                }
+            }
+        }
+    }, confirmButton = {
+        TextButton(onClick = onDismiss) { Text("Chiudi") }
+    }, dismissButton = {})
+}
+
+@Composable
+private fun EditFormationDialog(
+    userFormation: UserFormationRow,
+    week: Int,
+    qbs: List<QB>,
+    onDismiss: () -> Unit,
+    onSave: (uid: String, week: Int, qbIds: List<String>) -> Unit
+) {
+    val slots = remember { mutableStateListOf<String>() }
+    LaunchedEffect(userFormation) {
+        slots.clear()
+        val initial = userFormation.qbIds
+        for (i in 0 until 3) slots.add(initial.getOrNull(i) ?: "")
+    }
+
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Modifica formazione: ${userFormation.username}") }, text = {
+        Column(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+            Text("Week $week")
+            Spacer(modifier = Modifier.height(8.dp))
+
+            for (i in 0 until 3) {
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Slot ${i + 1}:", modifier = Modifier.width(80.dp))
+                    var expanded by remember { mutableStateOf(false) }
+                    val currentId = slots.getOrNull(i) ?: ""
+                    val currentLabel = qbs.firstOrNull { it.id == currentId }?.nome ?: "Seleziona QB"
+
+                    Box {
+                        Button(onClick = { expanded = true }) {
+                            Text(currentLabel)
+                        }
+                        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                            val candidates = qbs.filter { it.stato == "Titolare" || it.stato.isBlank() }
+                            candidates.forEach { qb ->
+                                DropdownMenuItem(text = { Text("${qb.nome} (${qb.squadra})") }, onClick = {
+                                    slots[i] = qb.id
+                                    expanded = false
+                                })
+                            }
+                            DropdownMenuItem(text = { Text("Rimuovi selezione") }, onClick = {
+                                slots[i] = ""
+                                expanded = false
+                            })
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+                    TextButton(onClick = { slots[i] = "" }) { Text("Clear") }
+                }
+            }
+
+            if (!errorMsg.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(errorMsg!!, color = MaterialTheme.colorScheme.error)
+            }
+        }
+    }, confirmButton = {
+        TextButton(onClick = {
+            val ids = slots.map { it.trim() }.filter { it.isNotBlank() }
+            if (ids.size != 3) {
+                errorMsg = "Devi selezionare esattamente 3 QB."
+                return@TextButton
+            }
+            if (ids.toSet().size != 3) {
+                errorMsg = "I 3 QB devono essere distinti."
+                return@TextButton
+            }
+            onSave(userFormation.uid, week, ids)
+        }) {
+            Text("Salva")
+        }
+    }, dismissButton = {
+        TextButton(onClick = onDismiss) { Text("Annulla") }
+    })
 }

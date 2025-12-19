@@ -17,8 +17,21 @@ data class AdminUser(
     val uid: String,
     val email: String,
     val username: String,
-    val nomeTeam: String,
+    val nomeTeam: String?,
     val isAdmin: Boolean = false
+)
+
+/**
+ * Rappresenta la formation visualizzata nella lista admin per una week:
+ * - qbIds: lista (potrebbe essere vuota)
+ * - totalWeekScore: punteggio calcolato per quella formation in quella week (somma punteggi > 0)
+ */
+data class UserFormationRow(
+    val uid: String,
+    val username: String,
+    val nomeTeam: String?,
+    val qbIds: List<String>,
+    val totalWeekScore: Double
 )
 
 class AdminViewModel : ViewModel() {
@@ -36,6 +49,10 @@ class AdminViewModel : ViewModel() {
 
     private val _qbs = MutableStateFlow<List<QB>>(emptyList())
     val qbs: StateFlow<List<QB>> = _qbs
+
+    // per la UI di modifica formation
+    private val _userFormations = MutableStateFlow<List<UserFormationRow>>(emptyList())
+    val userFormations: StateFlow<List<UserFormationRow>> = _userFormations
 
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading
@@ -73,8 +90,8 @@ class AdminViewModel : ViewModel() {
                         AdminUser(
                             uid = d.id,
                             email = d.getString("email") ?: "",
-                            username = d.getString("username") ?: "",
-                            nomeTeam = d.getString("nomeTeam") ?: "",
+                            username = d.getString("username") ?: d.getString("email") ?: d.id,
+                            nomeTeam = d.getString("nomeTeam"),
                             isAdmin = d.getBoolean("isAdmin") == true
                         )
                     } catch (e: Exception) {
@@ -165,6 +182,10 @@ class AdminViewModel : ViewModel() {
         }
     }
 
+    /**
+     * updateGame: aggiorna risultato e partitaGiocata.
+     * Usato dal dialog "Modifica dati partite".
+     */
     fun updateGame(gameId: String, partitaGiocata: Boolean, risultato: String?) {
         viewModelScope.launch {
             try {
@@ -182,6 +203,10 @@ class AdminViewModel : ViewModel() {
         }
     }
 
+    /**
+     * setQBScore: scrive/aggiorna il punteggio in weekstats per (gameId, qbId).
+     * Usato dal dialog "Modifica punteggi QBs".
+     */
     fun setQBScore(gameId: String, qbId: String, punteggio: Double) {
         viewModelScope.launch {
             try {
@@ -304,7 +329,7 @@ class AdminViewModel : ViewModel() {
     }
 
     /**
-     * calculateWeek: come prima — valida (anche se chiamato direttamente), poi setta partitaCalcolata=true via batch
+     * calculateWeek: valida e poi setta partitaCalcolata = true via batch
      */
     fun calculateWeek(week: Int) {
         viewModelScope.launch {
@@ -381,6 +406,184 @@ class AdminViewModel : ViewModel() {
                 }
             } catch (e: Exception) {
                 Log.e("AdminVM", "calculateWeek: ${e.message}", e)
+                _error.value = e.message
+            } finally {
+                _loading.value = false
+            }
+        }
+    }
+
+    /**
+     * Carica per la UI (admin) la lista di utenti (escludendo admin) con la formation per la week data
+     * e calcola il punteggio totale di quella formation usando i weekstats esistenti.
+     */
+    fun loadUserFormationsForWeek(week: Int?) {
+        viewModelScope.launch {
+            _loading.value = true
+            _error.value = null
+            try {
+                if (week == null) {
+                    _userFormations.value = emptyList()
+                    return@launch
+                }
+
+                // get games for week -> serve per filtrare weekstats
+                val gamesForWeek = _gamesByWeek.value[week] ?: emptyList()
+                val gameIds = gamesForWeek.map { it.id }
+
+                // fetch all weekstats (poi filter client-side)
+                val allWeekstatsSnap = db.collection("weekstats").get().await()
+                val allWeekstatsDocs = allWeekstatsSnap.documents
+
+                // index weekstats by qbId for quick lookup for this week
+                val wsByQb = mutableMapOf<String, MutableList<Double>>()
+                for (d in allWeekstatsDocs) {
+                    val gId = d.getString("game_id") ?: d.getString("gameId") ?: d.getString("game")
+                    if (gId == null || !gameIds.contains(gId)) continue
+                    val qbId = d.getString("qb_id") ?: d.getString("qbId") ?: continue
+                    val raw = d.get("punteggioQB") ?: d.get("punteggio_qb") ?: d.get("score") ?: d.get("punteggio")
+                    val value: Double? = when (raw) {
+                        is Number -> raw.toDouble()
+                        is String -> raw.toDoubleOrNull()
+                        else -> null
+                    }
+                    if (value != null) {
+                        val list = wsByQb.getOrPut(qbId) { mutableListOf() }
+                        list.add(value)
+                    }
+                }
+
+                // load users (exclude admin) and compute formation totals
+                val usersSnap = db.collection("users").get().await()
+                val rows = mutableListOf<UserFormationRow>()
+                for (udoc in usersSnap.documents) {
+                    val isAdmin = udoc.getBoolean("isAdmin") == true
+                    if (isAdmin) continue // skip admins
+
+                    val uid = udoc.id
+                    val username = udoc.getString("username") ?: udoc.getString("email") ?: uid
+                    val nomeTeam = udoc.getString("nomeTeam")
+
+                    // formation doc for the week
+                    val fdoc = db.collection("users").document(uid).collection("formations").document(week.toString()).get().await()
+                    val qbIds = (fdoc.get("qbIds") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+
+                    // totalWeekScore: somma dei punteggi > 0 per i qb schierati (se non ci sono weekstats -> 0)
+                    var total = 0.0
+                    qbIds.forEach { qid ->
+                        val scores = wsByQb[qid]
+                        val s = (scores?.filter { it > 0.0 }?.sum() ?: 0.0)
+                        total += s
+                    }
+
+                    rows.add(UserFormationRow(uid = uid, username = username, nomeTeam = nomeTeam, qbIds = qbIds, totalWeekScore = total))
+                }
+
+                _userFormations.value = rows.sortedBy { it.username.lowercase() }
+            } catch (e: Exception) {
+                Log.e("AdminVM", "loadUserFormationsForWeek: ${e.message}", e)
+                _error.value = e.message
+            } finally {
+                _loading.value = false
+            }
+        }
+    }
+
+    /**
+     * Aggiorna la formation di un utente per una week.
+     * - Scrive qbIds nella formation
+     * - Ricava i punteggi attuali dai weekstats (se presenti) e scrive 'punteggi' e 'totalWeekScore' nella formation
+     * - Ricalcola users/{uid}.totalScore (somma di tutti totalWeekScore nelle formations dell'utente)
+     *
+     * Nota: viene permessa la modifica anche se la week è stata calcolata; NON tocchiamo partitaCalcolata.
+     */
+    fun updateUserFormation(uid: String, week: Int, newQbIds: List<String>) {
+        viewModelScope.launch {
+            _loading.value = true
+            _error.value = null
+            try {
+                if (newQbIds.size != 3) {
+                    _error.value = "Devono essere esatti 3 QB."
+                    return@launch
+                }
+                if (newQbIds.toSet().size != 3) {
+                    _error.value = "I 3 QB devono essere distinti."
+                    return@launch
+                }
+
+                // get games for week
+                val gamesForWeek = _gamesByWeek.value[week] ?: emptyList()
+                val gameIds = gamesForWeek.map { it.id }
+
+                // fetch all weekstats and filter by gameIds (client-side)
+                val allWeekstatsSnap = db.collection("weekstats").get().await()
+                val allWeekstatsDocs = allWeekstatsSnap.documents
+
+                // map qbId -> sum of scores > 0 for that week
+                val qbScoreMap = mutableMapOf<String, Double?>()
+
+                for (qbId in newQbIds) {
+                    // find documents for qbId within gameIds
+                    val matched = allWeekstatsDocs.filter { d ->
+                        val gId = d.getString("game_id") ?: d.getString("gameId") ?: d.getString("game")
+                        if (gId == null) return@filter false
+                        if (!gameIds.contains(gId)) return@filter false
+                        val q = d.getString("qb_id") ?: d.getString("qbId") ?: d.getString("qb")
+                        q != null && q == qbId
+                    }
+
+                    if (matched.isEmpty()) {
+                        qbScoreMap[qbId] = null
+                    } else {
+                        // sum only values > 0
+                        val values = matched.mapNotNull { doc ->
+                            val raw = doc.get("punteggioQB") ?: doc.get("punteggio_qb") ?: doc.get("score") ?: doc.get("punteggio")
+                            when (raw) {
+                                is Number -> raw.toDouble()
+                                is String -> raw.toDoubleOrNull()
+                                else -> null
+                            }
+                        }.filter { it > 0.0 }
+                        qbScoreMap[qbId] = if (values.isEmpty()) 0.0 else values.sum()
+                    }
+                }
+
+                // compute totalWeekScore = sum of qbScoreMap values > 0
+                val totalWeekScore = qbScoreMap.values.mapNotNull { it?.takeIf { v -> v > 0.0 } }.sum()
+
+                // write formation data (merge)
+                val formationData: MutableMap<String, Any?> = mutableMapOf(
+                    "qbIds" to newQbIds,
+                    "weekNumber" to week,
+                    "punteggi" to qbScoreMap,       // map qbId -> Double? (null if not present)
+                    "totalWeekScore" to totalWeekScore
+                )
+
+                val formRef = db.collection("users").document(uid).collection("formations").document(week.toString())
+                formRef.set(formationData, SetOptions.merge()).await()
+
+                // recompute aggregated totalScore for user (sum of all totalWeekScore in their formations)
+                val formsSnap = db.collection("users").document(uid).collection("formations").get().await()
+                var userTotal = 0.0
+                for (f in formsSnap.documents) {
+                    val raw = f.get("totalWeekScore")
+                    val v = when (raw) {
+                        is Number -> raw.toDouble()
+                        is String -> raw.toDoubleOrNull() ?: 0.0
+                        else -> 0.0
+                    }
+                    userTotal += v
+                }
+
+                // update users/{uid}.totalScore
+                db.collection("users").document(uid).set(mapOf("totalScore" to userTotal), SetOptions.merge()).await()
+
+                // refresh UI list for the same week
+                loadUserFormationsForWeek(week)
+
+                _success.value = "Formazione aggiornata per ${week} (user total aggiornato)"
+            } catch (e: Exception) {
+                Log.e("AdminVM", "updateUserFormation: ${e.message}", e)
                 _error.value = e.message
             } finally {
                 _loading.value = false

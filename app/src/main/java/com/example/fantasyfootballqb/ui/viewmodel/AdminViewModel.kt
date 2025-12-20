@@ -300,7 +300,7 @@ class AdminViewModel : ViewModel() {
                 val wsSnap = db.collection("weekstats").whereEqualTo("game_id", gameId).get().await()
                 if (wsSnap.isEmpty) {
                     val label = "${g.getString("squadraCasa") ?: "?"} vs ${g.getString("squadraOspite") ?: "?"}"
-                    missingStats.add("$label -> nessun weekstats")
+                    missingStats.add("$label -> Punteggi giocatori mancatnti")
                     continue
                 }
 

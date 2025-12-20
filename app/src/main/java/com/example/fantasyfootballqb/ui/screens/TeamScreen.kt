@@ -34,7 +34,9 @@ fun TeamScreen(
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
     val gamesForWeek by vm.gamesForWeek.collectAsState()
+    val availableWeeks by vm.availableWeeks.collectAsState()
 
+    // selectedWeek: inizialmente weekDefault, poi sincronizziamo con availableWeeks se presenti
     var selectedWeek by remember { mutableStateOf(weekDefault) }
 
     // selected slots: 3 nullable
@@ -45,6 +47,17 @@ fun TeamScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+
+    // se cambia availableWeeks e non è vuota, assicurati che selectedWeek sia valido;
+    // se non è valido, imposta la week di default (qui la massima disponibile)
+    LaunchedEffect(availableWeeks) {
+        if (availableWeeks.isNotEmpty()) {
+            val defaultWeek = availableWeeks.maxOrNull() ?: availableWeeks.first()
+            if (!availableWeeks.contains(selectedWeek)) {
+                selectedWeek = defaultWeek
+            }
+        }
+    }
 
     // load formation + observe weekCalculated on week change
     LaunchedEffect(selectedWeek) {
@@ -98,11 +111,22 @@ fun TeamScreen(
                         var expanded by remember { mutableStateOf(false) }
                         Button(onClick = { expanded = true }) { Text(selectedWeek.toString()) }
                         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                            (1..18).forEach { w ->
-                                DropdownMenuItem(text = { Text(w.toString()) }, onClick = {
-                                    selectedWeek = w
-                                    expanded = false
-                                })
+                            if (availableWeeks.isEmpty()) {
+                                // fallback: mostra 1..18 se non ci sono games nel db
+                                (1..18).forEach { w ->
+                                    DropdownMenuItem(text = { Text(w.toString()) }, onClick = {
+                                        selectedWeek = w
+                                        expanded = false
+                                    })
+                                }
+                            } else {
+                                // mostra solo le week effettive trovate in Firestore
+                                availableWeeks.forEach { w ->
+                                    DropdownMenuItem(text = { Text(w.toString()) }, onClick = {
+                                        selectedWeek = w
+                                        expanded = false
+                                    })
+                                }
                             }
                         }
                     }
@@ -155,7 +179,6 @@ fun TeamScreen(
                                                         // mostra anche contro quale squadra giocherà (se disponibile)
                                                         val game = gamesForWeek.firstOrNull { it.squadraCasa == qb.squadra || it.squadraOspite == qb.squadra }
                                                         val oppText = game?.let {
-                                                            // formato HOME - AWAY (ad es. NO - ARI)
                                                             "${it.squadraCasa} - ${it.squadraOspite}"
                                                         } ?: "Avversario non disponibile"
                                                         Text("${oppText}", style = MaterialTheme.typography.bodySmall)

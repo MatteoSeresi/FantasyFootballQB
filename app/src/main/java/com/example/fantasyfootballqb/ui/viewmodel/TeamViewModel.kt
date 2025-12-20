@@ -17,7 +17,7 @@ import kotlinx.coroutines.tasks.await
 data class QBWithScore(
     val qb: QB,
     val score: Double?,
-    val opponentTeam: String? // es. "ARI" o null se non trovata
+    val opponentTeam: String?
 )
 
 class TeamViewModel : ViewModel() {
@@ -43,6 +43,10 @@ class TeamViewModel : ViewModel() {
     private val _gamesForWeek = MutableStateFlow<List<Game>>(emptyList())
     val gamesForWeek: StateFlow<List<Game>> = _gamesForWeek
 
+    // lista delle week effettivamente presenti nelle games (es. [1,2,3,4,5])
+    private val _availableWeeks = MutableStateFlow<List<Int>>(emptyList())
+    val availableWeeks: StateFlow<List<Int>> = _availableWeeks
+
     // weekCalculated (derived from games.partitaCalcolata)
     private val _weekCalculated = MutableStateFlow(false)
     val weekCalculated: StateFlow<Boolean> = _weekCalculated
@@ -57,6 +61,8 @@ class TeamViewModel : ViewModel() {
     init {
         observeQBs()
         loadUserProfile()
+        // carica le week disponibili all'avvio
+        loadAvailableWeeks()
     }
 
     private fun observeQBs() {
@@ -95,6 +101,25 @@ class TeamViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Carica le week distinte presenti nella collezione "games".
+     */
+    fun loadAvailableWeeks() {
+        viewModelScope.launch {
+            try {
+                val snaps = db.collection("games").get().await()
+                val weeks = snaps.documents.mapNotNull { d ->
+                    val w = d.getLong("weekNumber") ?: return@mapNotNull null
+                    w.toInt()
+                }.distinct().sorted()
+                _availableWeeks.value = weeks
+            } catch (e: Exception) {
+                Log.e("TeamVM", "loadAvailableWeeks: ${e.message}", e)
+                _error.value = e.message
+            }
+        }
+    }
+
     fun observeWeekCalculated(week: Int) {
         weekGamesListener?.remove()
         weekGamesListener = db.collection("games")
@@ -114,9 +139,6 @@ class TeamViewModel : ViewModel() {
             }
     }
 
-    /**
-     * Carica le games per la week (usato per mostrare contro quale squadra gioca ciascun QB).
-     */
     fun loadGamesForWeek(week: Int) {
         viewModelScope.launch {
             try {

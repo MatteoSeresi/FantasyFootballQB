@@ -155,7 +155,7 @@ fun CalendarScreen(calendarViewModel: CalendarViewModel = viewModel()) {
                                 }
                             } else {
                                 if (currentStats == null || currentStats!!.isEmpty()) {
-                                    Text("Errore del carocamenento dettagli partita")
+                                    Text("Punteggii dei giocatori non ancora inseriti")
                                 } else {
                                     val grouped = currentStats!!.groupBy { it.qb.squadra }
                                     grouped.forEach { (team, list) ->

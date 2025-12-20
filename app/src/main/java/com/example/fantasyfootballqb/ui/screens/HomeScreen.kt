@@ -3,6 +3,10 @@ package com.example.fantasyfootballqb.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
@@ -108,7 +112,10 @@ fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
-                        Text(text = "Crea la tua squadra", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            text = "Crea la tua squadra",
+                            style = MaterialTheme.typography.titleMedium
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
 
                         OutlinedTextField(
@@ -147,7 +154,10 @@ fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(text = "Team", style = MaterialTheme.typography.titleMedium)
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -167,14 +177,16 @@ fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {
                                 },
                                 enabled = !loading
                             ) {
-                                Icon(imageVector = Icons.Default.Edit, contentDescription = "Modifica")
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Modifica"
+                                )
                             }
                         }
                     }
                 }
             }
 
-            // Regolamento Card
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -185,12 +197,22 @@ fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Text(text = "Regolamento:", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Lorem Ipsum is simply dummy text of the printing and typesetting industry. " +
-                                "Qui puoi inserire il regolamento del gioco, le regole per creare la formazione, " +
-                                "come vengono assegnati i punteggi, ecc.",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+
+                    // area testuale scrollabile con altezza massima
+                    val scrollState = rememberScrollState()
+                    Column(
+                        modifier = Modifier
+                            .heightIn(max = 220.dp)    // regola questo valore a piacere
+                            .verticalScroll(scrollState)
+                    ) {
+                        Text(
+                            text = "Le partite sono organizzate in week, che corrispondono alle singole settimane di gioco. " +
+                                    "Prima dell'inizio di ogni week, ogni utente deve schierare la propria formazione selezionando 3 Quarterback. " +
+                                    "Una volta confermata la formazione, non sarà più possibile modificarla fino al termine della week in corso. Al termine della week verranno calcolati i punteggi ottenuti dai giocatori in base alle loro prestazioni e di conseguenza, sarà aggiornata la classifica generale dagli utenti partecipanti. " +
+                                    "Questo processo si ripete in modo identico per ogni week successiva.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
                 }
             }
         }

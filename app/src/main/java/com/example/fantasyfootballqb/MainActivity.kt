@@ -18,7 +18,7 @@ import com.example.fantasyfootballqb.ui.components.BottomBar
 import com.example.fantasyfootballqb.navigation.Routes
 import com.example.fantasyfootballqb.ui.theme.FantasyFootballTheme
 import com.google.firebase.FirebaseApp
-import com.example.fantasyfootballqb.ui.components.AppTopBar
+import com.example.fantasyfootballqb.components.AppTopBar
 
 
 class MainActivity : ComponentActivity() {
@@ -74,14 +74,5 @@ fun FantasyApp() {
                 modifier = Modifier.padding(innerPadding)
             )
         }
-    }
-}
-
-
-@Preview(showBackground = true)
-@Composable
-fun PreviewApp() {
-    FantasyFootballTheme {
-        FantasyApp()
     }
 }

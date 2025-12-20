@@ -1,6 +1,7 @@
-package com.example.fantasyfootballqb.ui.components
+package com.example.fantasyfootballqb.components
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.MaterialTheme
@@ -14,46 +15,69 @@ import androidx.compose.ui.unit.dp
 import com.example.fantasyfootballqb.R
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
-
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
 
 @Composable
 fun AppTopBar(
-    title: String,
-    modifier: Modifier = Modifier
+    title: String = "Fantasy Football",
+    modifier: Modifier = Modifier,
+    logoResId: Int = R.drawable.logo,
+    logoSize: Dp = 75.dp,        // dimensione default del logo (square)
+    barHeight: Dp = 100.dp       // altezza della topbar
 ) {
     Surface(
         color = MaterialTheme.colorScheme.primary,
         tonalElevation = 8.dp,
-        modifier = modifier.fillMaxWidth()
+        modifier = modifier
+            .fillMaxWidth()
+            .height(barHeight)
+            .clip(RoundedCornerShape(0.dp))
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(100.dp)
-                .padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Titolo a sinistra
-            Text(
-                text = "Fantasy Football",
-                color = MaterialTheme.colorScheme.onPrimary,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            // Row centrata: logo + titolo
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
                 modifier = Modifier
-                    .weight(1f)
-            )
+                    .padding(horizontal = 12.dp)
+                    .fillMaxWidth()
+            ) {
+                // Logo (opzionale)
+                Image(
+                    painter = painterResource(id = logoResId),
+                    contentDescription = "Logo",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .size(logoSize)
 
-            // Logo a destra
-            Spacer(modifier = Modifier.width(8.dp))
-            Image(
-                painter = painterResource(id = R.drawable.logo),
-                contentDescription = "NFL Logo",
-                modifier = Modifier
-                    .fillMaxHeight(0.85f)
-                    .aspectRatio(1f)
-            )
+                )
+
+
+                // Titolo
+                Text(
+                    text = "Fantasy Football",
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
+
+/* ---------------- Previews ---------------- */
+
+@Preview(showBackground = true, backgroundColor = 0xFFFFFFFF, widthDp = 360)
+@Composable
+private fun AppTopBarPreviewLight() {
+    AppTopBar(title = "Fantasy Football", logoSize = 80.dp, barHeight = 100.dp)
+}
+

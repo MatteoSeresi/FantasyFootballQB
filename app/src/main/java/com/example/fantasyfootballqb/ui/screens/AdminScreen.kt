@@ -210,7 +210,7 @@ fun AdminScreen(
 
             // Users dialog
             if (showUsersDialog) {
-                UsersDialog(users = users, onDismiss = { showUsersDialog = false }, onSave = { u, newEmail, newUsername, newNomeTeam ->
+                UsersDialog(users = users.filter { !it.isAdmin }, onDismiss = { showUsersDialog = false }, onSave = { u, newEmail, newUsername, newNomeTeam ->
                     vm.updateUserData(u.uid, newEmail, newUsername, newNomeTeam)
                 })
             }

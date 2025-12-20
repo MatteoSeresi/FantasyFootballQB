@@ -204,7 +204,8 @@ class TeamViewModel : ViewModel() {
     }
 
     /**
-     * Submit formation (unchangeable after submit).
+     * Submit formation
+     * NOTE: write in a single operation to avoid permission/update race.
      */
     fun submitFormation(week: Int, qbIds: List<String>) {
         if (qbIds.size != 3) {
@@ -221,15 +222,19 @@ class TeamViewModel : ViewModel() {
                     return@launch
                 }
                 val docRef = db.collection("users").document(uid).collection("formations").document(week.toString())
+
+                // scrittura in UN'OPERAZIONE sola: evita il secondo update che generava PERMISSION_DENIED
                 val data: MutableMap<String, Any?> = mutableMapOf(
                     "weekNumber" to week,
                     "qbIds" to qbIds,
-                    "locked" to false
+                    // impostiamo direttamente locked = true (formation "inserita")
+                    "locked" to true
                 )
+
+                // se preferisci usare merge (non sovrascrive altri campi), mantieni SetOptions.merge()
                 docRef.set(data, SetOptions.merge()).await()
-                // impostiamo locked true (simulando "inserisci formazione")
-                docRef.update(mapOf("locked" to true)).await()
-                // ricarica dati
+
+                // ricarica la formazione dall'UI
                 loadUserFormationForWeek(week)
             } catch (e: Exception) {
                 Log.e("TeamVM", "submitFormation: ${e.message}", e)
@@ -239,6 +244,7 @@ class TeamViewModel : ViewModel() {
             }
         }
     }
+
 
     /**
      * Carica i punteggi associati ai QB della formazione per la week.

@@ -25,7 +25,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.defaultMinSize
-
+import androidx.compose.material.icons.filled.Filter
+import androidx.compose.material.icons.filled.FilterList
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,7 +70,7 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                         }
                     }
                     IconButton(onClick = { showFilterSheet = true }) {
-                        Icon(Icons.Default.List, contentDescription = "Apri filtri")
+                        Icon(Icons.Default.FilterList, contentDescription = "Apri filtri")
                     }
                 }
             }
@@ -92,12 +93,31 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Giocatore", modifier = Modifier.weight(0.6f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
-                            Text("Team", modifier = Modifier.weight(0.25f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
-                            Text("Punteggio", modifier = Modifier.weight(0.15f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Giocatore",
+                                modifier = Modifier.weight(0.65f),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                "Team",
+                                modifier = Modifier.weight(0.15f),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Box(modifier = Modifier.weight(0.20f), contentAlignment = Alignment.Center) {
+                                Text(
+                                    "Punteggio",
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                     } else {
                         // Default: Giocatore | Team | GP | PTOT | PPG
+                        // NOTE: Team column shrunk (0.12) and PPG enlarged (0.13) to avoid wrap on decimals.
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -106,11 +126,46 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Giocatore", modifier = Modifier.weight(0.45f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
-                            Text("Team", modifier = Modifier.weight(0.2f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
-                            Text("GP", modifier = Modifier.weight(0.1f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold)
-                            Text("PTOT", modifier = Modifier.weight(0.15f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                            Text("PPG", modifier = Modifier.weight(0.1f), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                            Text(
+                                "Giocatore",
+                                modifier = Modifier.weight(0.50f),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                "Team",
+                                modifier = Modifier.weight(0.12f),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontSize = 12.sp
+
+                            )
+                            Box(modifier = Modifier.weight(0.10f), contentAlignment = Alignment.Center) {
+                                Text(
+                                    "PG",
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                            Box(modifier = Modifier.weight(0.15f), contentAlignment = Alignment.Center) {
+                                Text(
+                                    "PTOT",
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                            Box(modifier = Modifier.weight(0.13f), contentAlignment = Alignment.Center) {
+                                Text(
+                                    "PxP",
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp
+                                )
+                            }
                         }
                     }
 
@@ -133,11 +188,24 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Text(r.nome, modifier = Modifier.weight(0.6f), fontSize = 15.sp)
-                                        Text(r.squadra, modifier = Modifier.weight(0.25f))
-                                        // Punteggio: se 0 mostra "-" altrimenti valore (intero)
+                                        Text(
+                                            r.nome,
+                                            modifier = Modifier.weight(0.65f),
+                                            fontSize = 15.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            r.squadra,
+                                            modifier = Modifier.weight(0.15f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        // Punteggio: se 0 mostra "-" altrimenti valore (intero) - centrato
                                         val puntText = if (r.ptot == 0.0) "-" else r.ptot.toInt().toString()
-                                        Text(puntText, modifier = Modifier.weight(0.15f))
+                                        Box(modifier = Modifier.weight(0.20f), contentAlignment = Alignment.Center) {
+                                            Text(puntText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
                                     }
                                 } else {
                                     // default row: Giocatore | Team | GP | PTOT | PPG
@@ -149,15 +217,36 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Text(r.nome, modifier = Modifier.weight(0.45f), fontSize = 15.sp)
-                                        Text(r.squadra, modifier = Modifier.weight(0.2f))
-                                        Text(r.gp.toString(), modifier = Modifier.weight(0.1f))
+                                        Text(
+                                            r.nome,
+                                            modifier = Modifier.weight(0.50f),
+                                            fontSize = 15.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            r.squadra,
+                                            modifier = Modifier.weight(0.12f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
 
+                                        // GP centered
+                                        Box(modifier = Modifier.weight(0.10f), contentAlignment = Alignment.Center) {
+                                            Text(r.gp.toString(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
+
+                                        // PTOT centered
                                         val ptotText = if (r.ptot == 0.0) "-" else r.ptot.toInt().toString()
-                                        Text(ptotText, modifier = Modifier.weight(0.15f))
+                                        Box(modifier = Modifier.weight(0.15f), contentAlignment = Alignment.Center) {
+                                            Text(ptotText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
 
+                                        // PPG centered
                                         val ppgText = if (r.ptot == 0.0) "-" else String.format("%.1f", r.ppg)
-                                        Text(ppgText, modifier = Modifier.weight(0.1f))
+                                        Box(modifier = Modifier.weight(0.13f), contentAlignment = Alignment.Center) {
+                                            Text(ppgText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
                                     }
                                 }
                             }
@@ -241,10 +330,8 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
     }
 }
 
-/**
- * Se la lista availableTeams non ha 32 elementi (durante sviluppo),
- * costruisco una lista di fallback di 32 elementi usando quelli presenti + placeholder.
- */
+/* ---------------- helpers (unchanged) ---------------- */
+
 private fun buildDefaultTeamList(existing: List<String>): List<String> {
     val result = existing.toMutableList()
     var i = 1
@@ -256,11 +343,6 @@ private fun buildDefaultTeamList(existing: List<String>): List<String> {
     return result.take(32)
 }
 
-/**
- * Grid 4x8 per selezione multi-team.
- * allTeams: almeno 32 elementi (se meno, verrà normalizzata).
- * selected: Set<String> corrente (SnapshotStateSet non possibile, usiamo Set flow).
- */
 @Composable
 private fun TeamsGridMulti(
     allTeams: List<String>,
@@ -282,7 +364,7 @@ private fun TeamsGridMulti(
                         modifier = Modifier
                             .weight(1f)
                             .height(36.dp)
-                            .defaultMinSize(minWidth = 36.dp) // garantisce larghezza minima
+                            .defaultMinSize(minWidth = 36.dp)
                             .border(
                                 width = if (isSelected) 2.dp else 1.dp,
                                 color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
@@ -307,7 +389,6 @@ private fun TeamsGridMulti(
         }
     }
 }
-
 
 @Composable
 private fun WeekSelector(
@@ -347,4 +428,3 @@ private fun WeekSelector(
         }
     }
 }
-

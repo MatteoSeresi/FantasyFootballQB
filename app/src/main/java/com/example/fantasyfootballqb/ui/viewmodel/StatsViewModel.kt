@@ -191,10 +191,12 @@ class StatsViewModel : ViewModel() {
                 true
             }
 
-            // 2) aggrega per qbId: vogliamo contare GP come numero di doc (presenze),
-            // e PTOT come somma dei punteggi > 0 (gli 0 NON si sommano ma contano in GP).
-            val countEntries = mutableMapOf<String, Int>()
+            // 2) aggrega per qbId:
+            //    - vogliamo contare GP come numero di documenti con punteggio > 0 (NUOVA REGOLA)
+            //    - PTOT come somma dei punteggi > 0
             val nonZeroScores = mutableMapOf<String, MutableList<Double>>()
+            // manteniamo anche countEntries originali per eventuali casi in cui ci siano docs ma tutti = 0
+            val countEntries = mutableMapOf<String, Int>()
 
             filteredDocs.forEach { doc ->
                 val qbId = doc.getString("qb_id") ?: doc.getString("qbId") ?: doc.getString("qb") ?: return@forEach
@@ -206,19 +208,19 @@ class StatsViewModel : ViewModel() {
                     else -> null
                 }
 
-                // GP incrementa se c'è il documento
+                // mantengo conteggio documenti totali (utile per debug / possibile estensione)
                 countEntries[qbId] = (countEntries[qbId] ?: 0) + 1
 
-                // PTOT considera solo valori > 0
+                // PTOT considera solo valori > 0 e GP sarà il numero delle occorrenze > 0
                 if (value != null && value > 0.0) {
                     val list = nonZeroScores.getOrPut(qbId) { mutableListOf() }
                     list.add(value)
                 }
             }
 
-            // 3) adesso applica il filtro per squadra (multi) e per ricerca nome.
-            // Consideriamo soltanto i qb presenti in countEntries (GP>0)
-            val candidateQbIds = countEntries.keys
+            // 3) adesso applichiamo filtro per squadra (multi) e per ricerca nome.
+            // Consideriamo i QB che compaiono almeno in countEntries (hanno almeno un doc filtrato)
+            val candidateQbIds = (countEntries.keys + nonZeroScores.keys).toSet()
 
             val rows = candidateQbIds.mapNotNull { qbId ->
                 val qb = qbsCache[qbId] ?: QB(id = qbId, nome = qbId, squadra = "", stato = "")
@@ -234,8 +236,13 @@ class StatsViewModel : ViewModel() {
                     if (!nomeLower.contains(q)) return@mapNotNull null
                 }
 
-                val gp = countEntries[qbId] ?: 0
+                // GP: numero di partite con punteggio > 0 (se nulla -> 0)
+                val gp = nonZeroScores[qbId]?.size ?: 0
+
+                // PTOT: somma dei punteggi > 0 (se nulla -> 0.0)
                 val ptot = (nonZeroScores[qbId]?.sum() ?: 0.0)
+
+                // PPG: ptot diviso gp (se gp > 0), altrimenti 0.0
                 val ppg = if (gp > 0) ptot / gp else 0.0
 
                 StatRow(qbId = qbId, nome = qb.nome, squadra = qb.squadra, gp = gp, ptot = ptot, ppg = ppg)

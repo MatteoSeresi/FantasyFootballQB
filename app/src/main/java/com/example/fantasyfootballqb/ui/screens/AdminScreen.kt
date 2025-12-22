@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import kotlinx.coroutines.launch
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
+import com.example.fantasyfootballqb.components.AppTopBar
 
 @Composable
 fun AdminScreen(
@@ -38,11 +39,7 @@ fun AdminScreen(
     val error by vm.error.collectAsState()
     val success by vm.success.collectAsState()
     val selectedWeek by vm.selectedWeek.collectAsState()
-
-    // flag che segnala se la week è già stata calcolata (tutte le games hanno partitaCalcolata == true)
     val weekCalculated by vm.weekCalculated.collectAsState()
-
-    // states for modify-formation flow
     val userFormations by vm.userFormations.collectAsState()
 
     var showUsersDialog by remember { mutableStateOf(false) }
@@ -50,11 +47,8 @@ fun AdminScreen(
     var showModifyQBsDialog by remember { mutableStateOf(false) }
     var showModifyFormationsDialog by remember { mutableStateOf(false) }
     var editingFormationRow by remember { mutableStateOf<UserFormationRow?>(null) }
-
-    // NEW: week *specifica* per il dialog "Modifica formazioni utenti" (separata dalla selectedWeek principale)
     var modifyFormationsWeek by remember { mutableStateOf<Int?>(selectedWeek) }
 
-    // dialog di validazione / conferma calcolo
     var showConfirmCalculateDialog by remember { mutableStateOf(false) }
     var missingDataList by remember { mutableStateOf<List<String>>(emptyList()) }
     var showMissingDataDialog by remember { mutableStateOf(false) }
@@ -62,7 +56,6 @@ fun AdminScreen(
     val snackHost = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
-    // mostra snack quando cambia error / success
     LaunchedEffect(error) {
         if (!error.isNullOrBlank()) {
             snackHost.showSnackbar(error!!)
@@ -76,40 +69,43 @@ fun AdminScreen(
         }
     }
 
-    // quando cambia la selectedWeek (quella del calcolo), avvia l'osservazione dello stato "partitaCalcolata"
     LaunchedEffect(selectedWeek) {
-        selectedWeek?.let {
-            vm.observeWeekCalculated(it)
-        }
+        selectedWeek?.let { vm.observeWeekCalculated(it) }
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackHost) }) { padding ->
-        Box(modifier = Modifier
-            .fillMaxSize()
-            .padding(padding)
-            .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f))
+    // Usando topBar dello Scaffold la AppTopBar non subirà il padding laterale
+    Scaffold(
+        topBar = {
+            AppTopBar(
+                title = "Fantasy Football",
+                modifier = Modifier.fillMaxWidth(),
+                logoSize = 75.dp,
+                barHeight = 100.dp
+            )
+        },
+        snackbarHost = { SnackbarHost(snackHost) }
+    ) { innerPadding ->
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding) // importantissimo: rispettare innerPadding
+                .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f))
         ) {
-            Column(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                // header
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // badge "AMMINISTRATORE"
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(92.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.primary),
-                    contentAlignment = Alignment.CenterStart
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFFEF5350)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "Fantasy Football",
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.padding(start = 16.dp).weight(1f),
-                            fontSize = 26.sp
-                        )
-                    }
-                }
-
-                Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFFEF5350)), contentAlignment = Alignment.Center) {
                     Text("AMMINISTRATORE", color = Color.White, modifier = Modifier.padding(10.dp))
                 }
 
@@ -121,11 +117,8 @@ fun AdminScreen(
                             Text("Modifica dati utente")
                         }
 
-                        // Modifica formazione utente
                         Button(onClick = {
-                            // init dialog week independentemente dalla selectedWeek principale
                             modifyFormationsWeek = selectedWeek ?: weeks.firstOrNull()
-                            // carica le formations per la week iniziale del dialog
                             vm.loadUserFormationsForWeek(modifyFormationsWeek)
                             showModifyFormationsDialog = true
                         }, modifier = Modifier.fillMaxWidth()) {
@@ -134,21 +127,17 @@ fun AdminScreen(
                     }
                 }
 
-                // Calcolo week card
+                // Calcolo week card (il resto rimane invariato) ...
                 Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                     Column(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Calcolo week:", style = MaterialTheme.typography.titleSmall)
-
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface) {
                                 Text("Week:", modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
                             }
-
                             var expanded by remember { mutableStateOf(false) }
                             val label = selectedWeek?.toString() ?: "Seleziona week"
-                            Button(onClick = { expanded = true }) {
-                                Text(label)
-                            }
+                            Button(onClick = { expanded = true }) { Text(label) }
                             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                                 DropdownMenuItem(text = { Text("Seleziona week") }, onClick = {
                                     vm.setSelectedWeek(null); expanded = false
@@ -168,7 +157,6 @@ fun AdminScreen(
                             Text("Modifica punteggi QBs")
                         }
 
-                        // Bottone CALCOLA WEEK -> prima valida, poi chiede conferma, poi esegue calculateWeek
                         Button(
                             onClick = {
                                 val w = selectedWeek
@@ -177,7 +165,6 @@ fun AdminScreen(
                                     return@Button
                                 }
                                 coroutineScope.launch {
-                                    // chiama la suspend validateWeek
                                     val problems = vm.validateWeek(w)
                                     if (problems.isNotEmpty()) {
                                         missingDataList = problems
@@ -206,47 +193,28 @@ fun AdminScreen(
                 }
             }
 
-            // ---------------- Dialogs ----------------
-
-            // Users dialog
+            // -- dialogs (users / modify games / qbs / formations ecc.) --
             if (showUsersDialog) {
                 UsersDialog(users = users.filter { !it.isAdmin }, onDismiss = { showUsersDialog = false }, onSave = { u, newEmail, newUsername, newNomeTeam ->
                     vm.updateUserData(u.uid, newEmail, newUsername, newNomeTeam)
                 })
             }
 
-            // ModifyGamesDialog
             if (showModifyGamesDialog) {
                 val gamesForWeek = selectedWeek?.let { gamesByWeek[it] } ?: emptyList()
-                ModifyGamesDialog(
-                    week = selectedWeek,
-                    games = gamesForWeek,
-                    onDismiss = { showModifyGamesDialog = false },
-                    onSaveGame = { gameId, _partitaGiocataIgnored, risultato ->
-                        val played = risultato?.isNotBlank() == true
-                        vm.updateGame(gameId, played, risultato)
-                    }
-                )
+                ModifyGamesDialog(week = selectedWeek, games = gamesForWeek, onDismiss = { showModifyGamesDialog = false }, onSaveGame = { gameId, _, risultato ->
+                    val played = risultato?.isNotBlank() == true
+                    vm.updateGame(gameId, played, risultato)
+                })
             }
 
-            // ModifyQBsDialog
             if (showModifyQBsDialog) {
                 val gamesForWeek = selectedWeek?.let { gamesByWeek[it] } ?: emptyList()
-                ModifyQBsDialog(
-                    week = selectedWeek,
-                    games = gamesForWeek,
-                    allQBs = qbs,
-                    onDismiss = { showModifyQBsDialog = false },
-                    onSaveScore = { gameId, qbId, score ->
-                        vm.setQBScore(gameId, qbId, score)
-                    },
-                    onShowMessage = { msg ->
-                        coroutineScope.launch { snackHost.showSnackbar(msg) }
-                    }
-                )
+                ModifyQBsDialog(week = selectedWeek, games = gamesForWeek, allQBs = qbs, onDismiss = { showModifyQBsDialog = false }, onSaveScore = { gameId, qbId, score ->
+                    vm.setQBScore(gameId, qbId, score)
+                }, onShowMessage = { msg -> coroutineScope.launch { snackHost.showSnackbar(msg) } })
             }
 
-            // ModifyFormationsDialog (list of users & their formation for modifyFormationsWeek, independent from selectedWeek)
             if (showModifyFormationsDialog) {
                 ModifyFormationsDialog(
                     selectedWeek = modifyFormationsWeek,
@@ -258,66 +226,42 @@ fun AdminScreen(
                         modifyFormationsWeek = newWeek
                         vm.loadUserFormationsForWeek(newWeek)
                     },
-                    onEdit = { row ->
-                        editingFormationRow = row
-                    }
+                    onEdit = { row -> editingFormationRow = row }
                 )
             }
 
-            // Edit single formation -> pass the modifyFormationsWeek (the week selected inside the modify dialog)
             if (editingFormationRow != null) {
-                // ensure we pass the dialog-local week (modifyFormationsWeek)
                 val targetWeek = modifyFormationsWeek
                 if (targetWeek != null) {
-                    EditFormationDialog(
-                        userFormation = editingFormationRow!!,
-                        week = targetWeek,
-                        availableWeeks = weeks,
-                        qbs = qbs,
-                        onDismiss = {
-                            editingFormationRow = null
-                            // reload for the currently selected dialog week
-                            vm.loadUserFormationsForWeek(modifyFormationsWeek)
-                        },
-                        onSave = { uid, weekNum, qbIds ->
-                            vm.updateUserFormation(uid, weekNum, qbIds)
-                            editingFormationRow = null
-                            vm.loadUserFormationsForWeek(modifyFormationsWeek)
-                        }
-                    )
+                    EditFormationDialog(userFormation = editingFormationRow!!, week = targetWeek, availableWeeks = weeks, qbs = qbs, onDismiss = {
+                        editingFormationRow = null
+                        vm.loadUserFormationsForWeek(modifyFormationsWeek)
+                    }, onSave = { uid, weekNum, qbIds ->
+                        vm.updateUserFormation(uid, weekNum, qbIds)
+                        editingFormationRow = null
+                        vm.loadUserFormationsForWeek(modifyFormationsWeek)
+                    })
                 }
             }
 
-            // Dialog: dati mancanti
             if (showMissingDataDialog) {
                 AlertDialog(onDismissRequest = { showMissingDataDialog = false }, title = { Text("Dati mancanti") }, text = {
                     Column(modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
                         Text("Non è possibile calcolare la week: mancano i seguenti dati:")
                         Spacer(modifier = Modifier.height(8.dp))
-                        missingDataList.forEach { item ->
-                            Text("- $item", style = MaterialTheme.typography.bodySmall)
-                        }
+                        missingDataList.forEach { item -> Text("- $item", style = MaterialTheme.typography.bodySmall) }
                     }
-                }, confirmButton = {
-                    TextButton(onClick = { showMissingDataDialog = false }) { Text("Chiudi") }
-                }, dismissButton = {})
+                }, confirmButton = { TextButton(onClick = { showMissingDataDialog = false }) { Text("Chiudi") } }, dismissButton = {})
             }
 
-            // Dialog: conferma calcolo
             if (showConfirmCalculateDialog) {
-                AlertDialog(onDismissRequest = { showConfirmCalculateDialog = false }, title = { Text("Conferma calcolo") }, text = {
-                    Text("Sei sicuro di voler calcolare la week ${selectedWeek ?: "-"}? Questa operazione la renderà definitiva.")
-                }, confirmButton = {
+                AlertDialog(onDismissRequest = { showConfirmCalculateDialog = false }, title = { Text("Conferma calcolo") }, text = { Text("Sei sicuro di voler calcolare la week ${selectedWeek ?: "-"}? Questa operazione la renderà definitiva.") }, confirmButton = {
                     TextButton(onClick = {
                         showConfirmCalculateDialog = false
                         val w = selectedWeek
-                        if (w != null) {
-                            vm.calculateWeek(w)
-                        }
+                        if (w != null) vm.calculateWeek(w)
                     }) { Text("Conferma") }
-                }, dismissButton = {
-                    TextButton(onClick = { showConfirmCalculateDialog = false }) { Text("Annulla") }
-                })
+                }, dismissButton = { TextButton(onClick = { showConfirmCalculateDialog = false }) { Text("Annulla") } })
             }
 
             if (loading) {

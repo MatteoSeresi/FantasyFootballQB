@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.draw.clip
 import kotlinx.coroutines.launch
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.tasks.await
 
 @Composable
 fun TeamScreen(
@@ -39,6 +41,10 @@ fun TeamScreen(
     // selectedWeek: inizialmente weekDefault, poi sincronizziamo con availableWeeks se presenti
     var selectedWeek by remember { mutableStateOf(weekDefault) }
 
+    // firstUncalculatedWeek (prima week presente nelle games che NON è ancora partitaCalcolata)
+    var firstUncalculatedWeek by remember { mutableStateOf<Int?>(null) }
+    var computingFirstUncalculated by remember { mutableStateOf(false) }
+
     // selected slots: 3 nullable
     var selectedSlots by remember { mutableStateOf<List<QB?>>(listOf(null, null, null)) }
     var slotDialogOpen by remember { mutableStateOf(false) }
@@ -47,6 +53,8 @@ fun TeamScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+
+    val db = remember { FirebaseFirestore.getInstance() }
 
     // se cambia availableWeeks e non è vuota, assicurati che selectedWeek sia valido;
     // se non è valido, imposta la week di default (qui la massima disponibile)
@@ -57,9 +65,14 @@ fun TeamScreen(
                 selectedWeek = defaultWeek
             }
         }
+        // ricalcola firstUncalculated quando availableWeeks cambia
+        computeFirstUncalculatedWeek(db, availableWeeks) { found, computing ->
+            firstUncalculatedWeek = found
+            computingFirstUncalculated = computing
+        }
     }
 
-    // load formation + observe weekCalculated on week change
+    // quando l'utente cambia la selectedWeek ricarichiamo formation e giochi e osserviamo il flag weekCalculated
     LaunchedEffect(selectedWeek) {
         vm.loadUserFormationForWeek(selectedWeek)
         vm.loadGamesForWeek(selectedWeek)
@@ -134,89 +147,135 @@ fun TeamScreen(
 
                 Card(modifier = Modifier.fillMaxWidth().heightIn(min = 260.dp), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                     Column(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+
+                        // Calcolo regole di inserimento:
+                        // - se firstUncalculatedWeek != null: solo quella week può ricevere inserimenti
+                        // - se firstUncalculatedWeek == null: fallback -> usiamo !weekCalculated per la selectedWeek
+                        val canInsertForThisWeek = if (firstUncalculatedWeek != null) {
+                            selectedWeek == firstUncalculatedWeek
+                        } else {
+                            !weekCalculated
+                        }
+
                         // Caso: utente non ha formazione
                         if (formationQBs.isEmpty()) {
-                            // Se la week è già stata calcolata => week disputata: blocca selezione
-                            if (weekCalculated) {
-                                // NUOVA UI per utente nuovo vs utente esistente
-                                if (userTeamName.isNullOrBlank()) {
+                            when {
+                                // 1) week non presente nelle availableWeeks -> messaggio esplicito
+                                availableWeeks.isNotEmpty() && !availableWeeks.contains(selectedWeek) -> {
                                     Column(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("WEEK DISPUTATA", fontWeight = FontWeight.Bold)
+                                        Text("Week non disponibile", fontWeight = FontWeight.Bold)
                                         Spacer(modifier = Modifier.height(8.dp))
                                         Text(
-                                            "Sei un nuovo utente e ti sei registrato dopo che questa week è stata disputata. " +
-                                                    "Non è possibile schierare la formazione retroattivamente per questa week.",
-                                            textAlign = TextAlign.Center
-                                        )
-                                    }
-                                } else {
-                                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("WEEK DISPUTATA", fontWeight = FontWeight.Bold)
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text(
-                                            "La possibilità di schierare la formazione per questa week è terminata. " +
-                                                    "Non è possibile schierare la formazione retroattivamente per questa week.",
+                                            "La week $selectedWeek non è presente nel calendario (le partite sono disponibili fino alla week ${availableWeeks.maxOrNull()}).",
                                             textAlign = TextAlign.Center
                                         )
                                     }
                                 }
-                            } else {
-                                // Selection phase (utente può scegliere)
-                                Text("Seleziona i 3 giocatori da schierare:", fontWeight = FontWeight.SemiBold)
 
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    selectedSlots.forEachIndexed { idx, qb ->
-                                        Card(modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                slotIndexForDialog = idx
-                                                slotDialogOpen = true
-                                            }, shape = RoundedCornerShape(8.dp)) {
-                                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                if (qb != null && qb.id.isNotEmpty()) {
-                                                    Column(modifier = Modifier.weight(1f)) {
-                                                        Text("- ${qb.nome}", fontWeight = FontWeight.SemiBold)
-                                                        // mostra anche contro quale squadra giocherà (se disponibile)
-                                                        val game = gamesForWeek.firstOrNull { it.squadraCasa == qb.squadra || it.squadraOspite == qb.squadra }
-                                                        val oppText = game?.let {
-                                                            "${it.squadraCasa} - ${it.squadraOspite}"
-                                                        } ?: "Avversario non disponibile"
-                                                        Text("${oppText}", style = MaterialTheme.typography.bodySmall)
-                                                    }
-                                                    Text("Cambia")
-                                                } else {
-                                                    Box(modifier = Modifier.size(44.dp).background(Color.LightGray, shape = RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                                                        Text("+")
-                                                    }
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                    Text("Aggiungi QB")
-                                                }
+                                // 2) settimana già calcolata -> non si può inserire retroattivamente
+                                weekCalculated -> {
+                                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("WEEK DISPUTATA", fontWeight = FontWeight.Bold)
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        if (userTeamName.isNullOrBlank()) {
+                                            Text(
+                                                "Sei un nuovo utente e ti sei registrato dopo che questa week è stata disputata. " +
+                                                        "Non è possibile schierare la formazione retroattivamente per questa week.",
+                                                textAlign = TextAlign.Center
+                                            )
+                                        } else {
+                                            Text(
+                                                "La possibilità di schierare la formazione per questa week è terminata. " +
+                                                        "Non è possibile schierare la formazione retroattivamente per questa week.",
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // 3) week non calcolata, ma non è la firstUncalculated -> mostra messaggio quale week è in corso
+                                !canInsertForThisWeek -> {
+                                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("Inserimento non consentito", fontWeight = FontWeight.Bold)
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        if (computingFirstUncalculated) {
+                                            Text("Verifica in corso sulle week disponibili...", textAlign = TextAlign.Center)
+                                        } else {
+                                            if (firstUncalculatedWeek != null) {
+                                                Text(
+                                                    "Non è possibile schierare la formazione per la week $selectedWeek perché è ancora in corso la week ${firstUncalculatedWeek}. " +
+                                                            "Per poter inserire la formazione devi selezionare la week in corso (${firstUncalculatedWeek}).",
+                                                    textAlign = TextAlign.Center
+                                                )
+                                            } else {
+                                                // fallback generico
+                                                Text(
+                                                    "Non è possibile schierare la formazione per la week $selectedWeek in questo momento.",
+                                                    textAlign = TextAlign.Center
+                                                )
                                             }
                                         }
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text("Tocca uno slot (+) per scegliere un QB tra i titolari.", style = MaterialTheme.typography.bodySmall)
+                                // 4) week non calcolata e consentita -> fase di selezione
+                                else -> {
+                                    // Selection phase (utente può scegliere)
+                                    Text("Seleziona i 3 giocatori da schierare:", fontWeight = FontWeight.SemiBold)
 
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Button(onClick = {
-                                    val filled = selectedSlots.filterNotNull().filter { it.id.isNotEmpty() }
-                                    if (filled.size != 3) {
-                                        coroutineScope.launch { snackbarHostState.showSnackbar("Devi selezionare 3 QB") }
-                                        return@Button
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        selectedSlots.forEachIndexed { idx, qb ->
+                                            Card(modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    slotIndexForDialog = idx
+                                                    slotDialogOpen = true
+                                                }, shape = RoundedCornerShape(8.dp)) {
+                                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                    if (qb != null && qb.id.isNotEmpty()) {
+                                                        Column(modifier = Modifier.weight(1f)) {
+                                                            Text("- ${qb.nome}", fontWeight = FontWeight.SemiBold)
+                                                            // mostra anche contro quale squadra giocherà (se disponibile)
+                                                            val game = gamesForWeek.firstOrNull { it.squadraCasa == qb.squadra || it.squadraOspite == qb.squadra }
+                                                            val oppText = game?.let {
+                                                                "${it.squadraCasa} - ${it.squadraOspite}"
+                                                            } ?: "Avversario non disponibile"
+                                                            Text("${oppText}", style = MaterialTheme.typography.bodySmall)
+                                                        }
+                                                        Text("Cambia")
+                                                    } else {
+                                                        Box(modifier = Modifier.size(44.dp).background(Color.LightGray, shape = RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                                                            Text("+")
+                                                        }
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Text("Aggiungi QB")
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
-                                    val ids = filled.map { it.id }
-                                    if (ids.toSet().size != 3) {
-                                        coroutineScope.launch { snackbarHostState.showSnackbar("I 3 QB devono essere diversi") }
-                                        return@Button
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text("Tocca uno slot (+) per scegliere un QB tra i titolari.", style = MaterialTheme.typography.bodySmall)
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Button(onClick = {
+                                        val filled = selectedSlots.filterNotNull().filter { it.id.isNotEmpty() }
+                                        if (filled.size != 3) {
+                                            coroutineScope.launch { snackbarHostState.showSnackbar("Devi selezionare 3 QB") }
+                                            return@Button
+                                        }
+                                        val ids = filled.map { it.id }
+                                        if (ids.toSet().size != 3) {
+                                            coroutineScope.launch { snackbarHostState.showSnackbar("I 3 QB devono essere diversi") }
+                                            return@Button
+                                        }
+                                        showConfirmInsertDialog = true
+                                    }, modifier = Modifier.fillMaxWidth()) {
+                                        Text("INSERISCI LA FORMAZIONE")
                                     }
-                                    showConfirmInsertDialog = true
-                                }, modifier = Modifier.fillMaxWidth()) {
-                                    Text("INSERISCI LA FORMAZIONE")
                                 }
                             }
-
                         } else {
                             // Caso: l'utente ha già una formazione (mostriamo la formazione e lo stato basato su weekCalculated)
                             Text("Formazione:", fontWeight = FontWeight.SemiBold)
@@ -341,6 +400,56 @@ fun TeamScreen(
     if (loading) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
+        }
+    }
+}
+
+/**
+ * Coroutine helper: calcola la prima week (nell'ordine di availableWeeks)
+ * per cui esiste almeno una partita con partitaCalcolata != true.
+ *
+ * - se availableWeeks è vuoto -> ritorna null
+ * - imposta il callback con (foundWeek?, computingFlag)
+ */
+private fun computeFirstUncalculatedWeek(
+    db: FirebaseFirestore,
+    availableWeeks: List<Int>,
+    onResult: (Int?, Boolean) -> Unit
+) {
+    // launch a coroutine via rememberCoroutineScope from caller (we cannot access it here),
+    // so instead caller uses LaunchedEffect and invokes this suspend logic.
+    // To make it simple, we start a coroutine on the common pool:
+    kotlinx.coroutines.GlobalScope.launch {
+        try {
+            onResult(null, true)
+            if (availableWeeks.isEmpty()) {
+                onResult(null, false)
+                return@launch
+            }
+            // iterate in ascending order
+            val sorted = availableWeeks.sorted()
+            var found: Int? = null
+            for (w in sorted) {
+                val snaps = db.collection("games")
+                    .whereEqualTo("weekNumber", w)
+                    .get()
+                    .await()
+                val docs = snaps.documents
+                if (docs.isEmpty()) {
+                    // if no games for this week, skip
+                    continue
+                }
+                // if any doc has partitaCalcolata != true => this week is not completely calculated
+                val anyNotCalculated = docs.any { it.getBoolean("partitaCalcolata") != true }
+                if (anyNotCalculated) {
+                    found = w
+                    break
+                }
+            }
+            onResult(found, false)
+        } catch (e: Exception) {
+            // on error, return null and stop computing
+            onResult(null, false)
         }
     }
 }

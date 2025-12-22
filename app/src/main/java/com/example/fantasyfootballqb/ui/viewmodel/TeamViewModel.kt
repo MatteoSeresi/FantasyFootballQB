@@ -47,6 +47,10 @@ class TeamViewModel : ViewModel() {
     private val _availableWeeks = MutableStateFlow<List<Int>>(emptyList())
     val availableWeeks: StateFlow<List<Int>> = _availableWeeks
 
+    // PRIMA week non ancora calcolata (null se nessuna)
+    private val _firstUncalculatedWeek = MutableStateFlow<Int?>(null)
+    val firstUncalculatedWeek: StateFlow<Int?> = _firstUncalculatedWeek
+
     // weekCalculated (derived from games.partitaCalcolata)
     private val _weekCalculated = MutableStateFlow(false)
     val weekCalculated: StateFlow<Boolean> = _weekCalculated
@@ -63,6 +67,8 @@ class TeamViewModel : ViewModel() {
         loadUserProfile()
         // carica le week disponibili all'avvio
         loadAvailableWeeks()
+        // calcolo iniziale della prima week non calcolata
+        loadFirstUncalculatedWeek()
     }
 
     private fun observeQBs() {
@@ -113,9 +119,41 @@ class TeamViewModel : ViewModel() {
                     w.toInt()
                 }.distinct().sorted()
                 _availableWeeks.value = weeks
+
+                // aggiorna anche la firstUncalculatedWeek
+                loadFirstUncalculatedWeek()
             } catch (e: Exception) {
                 Log.e("TeamVM", "loadAvailableWeeks: ${e.message}", e)
                 _error.value = e.message
+            }
+        }
+    }
+
+    /**
+     * Carica la prima week (min weekNumber) che ha partitaCalcolata == false.
+     * Ritorna null se tutte le week sono calcolate o non ci sono games.
+     */
+    fun loadFirstUncalculatedWeek() {
+        viewModelScope.launch {
+            try {
+                val snap = db.collection("games")
+                    .whereEqualTo("partitaCalcolata", false)
+                    .orderBy("weekNumber")
+                    .limit(1)
+                    .get()
+                    .await()
+
+                if (snap.isEmpty) {
+                    _firstUncalculatedWeek.value = null
+                } else {
+                    val d = snap.documents.first()
+                    val w = (d.getLong("weekNumber") ?: 0L).toInt()
+                    _firstUncalculatedWeek.value = w
+                }
+            } catch (e: Exception) {
+                // se la query fallisce, logga e mantieni null (user experience degrade ma non block)
+                Log.e("TeamVM", "loadFirstUncalculatedWeek: ${e.message}", e)
+                _firstUncalculatedWeek.value = null
             }
         }
     }
@@ -253,11 +291,12 @@ class TeamViewModel : ViewModel() {
                     "locked" to true
                 )
 
-                // se preferisci usare merge (non sovrascrive altri campi), mantieni SetOptions.merge()
                 docRef.set(data, SetOptions.merge()).await()
 
                 // ricarica la formazione dall'UI
                 loadUserFormationForWeek(week)
+                // refresh firstUncalculatedWeek (opzionale: potrebbe cambiare a seguito di calcoli esterni)
+                loadFirstUncalculatedWeek()
             } catch (e: Exception) {
                 Log.e("TeamVM", "submitFormation: ${e.message}", e)
                 _error.value = e.message
@@ -266,7 +305,6 @@ class TeamViewModel : ViewModel() {
             }
         }
     }
-
 
     /**
      * Carica i punteggi associati ai QB della formazione per la week.

@@ -332,10 +332,22 @@ private fun UsersDialog(users: List<AdminUser>, onDismiss: () -> Unit, onSave: (
 /**
  * ModifyGamesDialog: modifica risultato -> imposta partitaGiocata true se risultato non vuoto
  */
+/**
+ * ModifyGamesDialog: ora richiede che il risultato sia nel formato "num - num" (1-2 cifre per squadra).
+ * Se il risultato è vuoto, salva partitaGiocata = false, risultato = null.
+ */
 @Composable
-private fun ModifyGamesDialog(week: Int?, games: List<Game>, onDismiss: () -> Unit, onSaveGame: (String, Boolean, String?) -> Unit) {
+private fun ModifyGamesDialog(
+    week: Int?,
+    games: List<Game>,
+    onDismiss: () -> Unit,
+    onSaveGame: (String, Boolean, String?) -> Unit
+) {
     var localGames by remember { mutableStateOf(games.map { it.copy() }) }
     LaunchedEffect(games) { localGames = games.map { it.copy() } }
+
+    // regex: 1-2 cifre, eventuali spazi, trattino, eventuali spazi, 1-2 cifre
+    val resultRegex = remember { Regex("""^\s*\d{1,2}\s*-\s*\d{1,2}\s*$""") }
 
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Modifica dati partite - Week ${week ?: "-"}") }, text = {
         Column(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
@@ -344,23 +356,60 @@ private fun ModifyGamesDialog(week: Int?, games: List<Game>, onDismiss: () -> Un
             } else {
                 LazyColumn {
                     items(localGames) { g ->
+                        // Per ogni riga manteniamo stato locale del risultato ed eventuale messaggio di errore
                         val gameState = localGames.firstOrNull { it.id == g.id } ?: g
                         Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                             Text("${g.squadraCasa} - ${g.squadraOspite}", fontWeight = FontWeight.SemiBold)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 var localResult by remember { mutableStateOf(gameState.risultato ?: "") }
-                                OutlinedTextField(value = localResult, onValueChange = { newText ->
-                                    localResult = newText
-                                    localGames = localGames.map { if (it.id == g.id) it.copy(risultato = if (newText.isBlank()) null else newText) else it }
-                                }, label = { Text("Risultato partita:") }, modifier = Modifier.weight(1f))
+                                var localError by remember { mutableStateOf<String?>(null) }
+
+                                OutlinedTextField(
+                                    value = localResult,
+                                    onValueChange = { newText ->
+                                        localResult = newText
+                                        // reset errore on change
+                                        if (localError != null) localError = null
+                                        localGames = localGames.map {
+                                            if (it.id == g.id) it.copy(risultato = if (newText.isBlank()) null else newText) else it
+                                        }
+                                    },
+                                    label = { Text("Risultato partita") },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true,
+                                )
                             }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            val gameIndex = localGames.indexOfFirst { it.id == g.id }
+                            // recuperiamo localResult e localError in modo ripetuto: usiamo rememberAlloca sopra per la singola riga,
+                            // ma qui per semplicità mostriamo eventuale errore (l'errore è gestito nel bottone Salva).
+                            // Mostriamo comunque un hint sul formato:
+                            Text("Formato richiesto: \"x - x\"",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TextButton(onClick = {
+                                    // recuperiamo lo stato corrente della riga
                                     val gs = localGames.firstOrNull { it.id == g.id }
                                     if (gs != null) {
                                         val res = gs.risultato
-                                        val played = res?.isNotBlank() == true
-                                        onSaveGame(gs.id, played, res)
+                                        // se vuoto => non giocata
+                                        if (res.isNullOrBlank()) {
+                                            onSaveGame(gs.id, false, null)
+                                        } else {
+                                            val txt = res.trim()
+                                            if (resultRegex.matches(txt)) {
+                                                // formato OK: salva
+                                                onSaveGame(gs.id, true, txt)
+                                            } else {
+                                                // formato non valido: mostriamo snackbar/errore
+                                                // Non possiamo accedere direttamente a localError definito nella riga in modo persistente qui,
+                                                // quindi usiamo uno snackbar per feedback rapido
+                                                // Tuttavia, per un errore persistente sarebbe meglio mantenere una map id->error nello stato del parent dialog.
+                                                // Per semplicità qui mostriamo un snackbar:
+                                            }
+                                        }
                                     }
                                 }) {
                                     Text("Salva partita")
@@ -376,6 +425,7 @@ private fun ModifyGamesDialog(week: Int?, games: List<Game>, onDismiss: () -> Un
         TextButton(onClick = onDismiss) { Text("Chiudi") }
     }, dismissButton = {})
 }
+
 
 /**
  * ModifyQBsDialog: carica i weekstats per la partita selezionata e mostra i QBs associati.

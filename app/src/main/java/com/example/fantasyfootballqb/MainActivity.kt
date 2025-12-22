@@ -53,14 +53,11 @@ fun FantasyApp() {
     )
     val showBars = visibleRoutes.any { it.route == currentRoute }
 
-    // recupera titolo (se route non trovata, titolo vuoto)
-    val currentTitle = visibleRoutes.find { it.route == currentRoute }?.title ?: "Fantasy Football"
-
     Surface(color = MaterialTheme.colorScheme.background) {
         Scaffold(
             topBar = {
                 if (showBars) {
-                    AppTopBar(title = currentTitle)
+                    AppTopBar()
                 }
             },
             bottomBar = {

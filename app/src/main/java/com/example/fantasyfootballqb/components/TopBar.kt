@@ -57,8 +57,6 @@ fun AppTopBar(
                         .size(logoSize)
 
                 )
-
-
                 // Titolo
                 Text(
                     text = "Fantasy Football",
@@ -72,12 +70,3 @@ fun AppTopBar(
         }
     }
 }
-
-/* ---------------- Previews ---------------- */
-
-@Preview(showBackground = true, backgroundColor = 0xFFFFFFFF, widthDp = 360)
-@Composable
-private fun AppTopBarPreviewLight() {
-    AppTopBar(title = "Fantasy Football", logoSize = 80.dp, barHeight = 100.dp)
-}
-

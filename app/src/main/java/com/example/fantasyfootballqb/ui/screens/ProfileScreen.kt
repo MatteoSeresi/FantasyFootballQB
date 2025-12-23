@@ -190,7 +190,7 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
                 AlertDialog(
                     onDismissRequest = { showConfirmDelete = false },
                     title = { Text("Conferma eliminazione") },
-                    text = { Text("Sei sicuro di voler eliminare il tuo account? Questa operazione è irreversibile e rimuoverà anche il nome della tua squadra.") },
+                    text = { Text("Sei sicuro di voler eliminare il tuo account?") },
                     confirmButton = {
                         TextButton(onClick = {
                             showConfirmDelete = false

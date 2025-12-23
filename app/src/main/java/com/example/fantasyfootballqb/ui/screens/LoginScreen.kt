@@ -1,9 +1,9 @@
 package com.example.fantasyfootballqb.ui.screens
 
 import android.util.Log
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Login
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -16,12 +16,18 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
+import com.example.fantasyfootballqb.R
+
+
 
 @Composable
 fun LoginScreen(
     onLoginNavigate: (isAdmin: Boolean) -> Unit,
     onRegister: () -> Unit
 ) {
+    // Firebase instances (usate solo al click del bottone)
     val auth = FirebaseAuth.getInstance()
     val db = FirebaseFirestore.getInstance()
 
@@ -38,7 +44,19 @@ fun LoginScreen(
             .fillMaxSize()
             .padding(padding), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
+                Image(
+                    painter = painterResource(id = R.drawable.logo),
+                    contentDescription = "App logo",
+                    modifier = Modifier
+                        .size(140.dp),
+                    contentScale = ContentScale.Fit
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Titolo
                 Text(text = "Accedi", style = MaterialTheme.typography.titleLarge)
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 OutlinedTextField(

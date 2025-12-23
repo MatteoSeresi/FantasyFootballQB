@@ -16,6 +16,14 @@ data class RankingEntry(
     val total: Double
 )
 
+// dettagli utente mostrati nel dialog
+data class UserDetail(
+    val uid: String,
+    val username: String,
+    val nomeTeam: String?,
+    val favoriteQBName: String? // null => "Nessun giocatore preferito"
+)
+
 class RankingViewModel : ViewModel() {
 
     private val db = FirebaseFirestore.getInstance()
@@ -28,6 +36,16 @@ class RankingViewModel : ViewModel() {
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
+
+    // stato relativo al dettaglio utente (dialog)
+    private val _selectedUserDetail = MutableStateFlow<UserDetail?>(null)
+    val selectedUserDetail: StateFlow<UserDetail?> = _selectedUserDetail
+
+    private val _selectedUserLoading = MutableStateFlow(false)
+    val selectedUserLoading: StateFlow<Boolean> = _selectedUserLoading
+
+    private val _selectedUserError = MutableStateFlow<String?>(null)
+    val selectedUserError: StateFlow<String?> = _selectedUserError
 
     init {
         loadRanking()
@@ -103,7 +121,6 @@ class RankingViewModel : ViewModel() {
                                         else -> null
                                     }
                                     if (n != null) {
-                                        // includiamo anche 0 (vale 0), non filtriamo: il totale viene sommato
                                         sum += n
                                     }
                                 }
@@ -113,13 +130,11 @@ class RankingViewModel : ViewModel() {
 
                         // 3) fallback robusto: se ancora nulla, calcola dal weekstats
                         if (valueFound == null) {
-                            // serve la weekNumber e i qbIds
                             val weekNum = (f.getLong("weekNumber") ?: f.getLong("week") ?: 0L).toInt()
                             val qbIdsRaw = f.get("qbIds") as? List<*>
                             val qbIds = qbIdsRaw?.mapNotNull { it as? String } ?: emptyList()
 
                             if (qbIds.isEmpty()) {
-                                // niente da sommare
                                 valueFound = 0.0
                             } else {
                                 // prendi i games della week (cache)
@@ -133,7 +148,6 @@ class RankingViewModel : ViewModel() {
                                 }
 
                                 var sum = 0.0
-                                // per ogni qb cerco weekstats e filtro per gameIds della week
                                 for (qbId in qbIds) {
                                     try {
                                         val snap = db.collection("weekstats")
@@ -141,7 +155,6 @@ class RankingViewModel : ViewModel() {
                                             .get()
                                             .await()
 
-                                        // cerca doc che ha game_id che appartiene a gameIds
                                         for (doc in snap.documents) {
                                             val gid = doc.getString("game_id") ?: doc.getString("gameId") ?: (doc.get("game") as? String)
                                             if (gid != null && gameIds.contains(gid)) {
@@ -153,7 +166,7 @@ class RankingViewModel : ViewModel() {
                                                 }
                                                 if (valnum != null) {
                                                     sum += valnum
-                                                    break // se trovato un weekstat valido per questo qb nella week, passo al prossimo qb
+                                                    break
                                                 }
                                             }
                                         }
@@ -165,14 +178,12 @@ class RankingViewModel : ViewModel() {
                             }
                         }
 
-                        // somma al totale utente (valueFound non sarà null a questo punto)
                         totalForUser += (valueFound ?: 0.0)
                     } // end formations loop
 
                     entries.add(RankingEntry(uid = uid, username = username, nomeTeam = nomeTeam, total = totalForUser))
                 } // end users loop
 
-                // ordina desc per total
                 val sorted = entries.sortedByDescending { it.total }
                 _ranking.value = sorted
             } catch (e: Exception) {
@@ -182,6 +193,82 @@ class RankingViewModel : ViewModel() {
                 _loading.value = false
             }
         }
+    }
+
+    /**
+     * Carica i dettagli di un utente e calcola il "giocatore preferito" (QB più presente nelle formations).
+     * Regole:
+     *  - se non ci sono formation => nessun preferito
+     *  - conta le occorrenze di ogni qbId nelle formations (tutte le settimane)
+     *  - se il massimo è 0 => nessun preferito
+     *  - se ci sono più QB con lo stesso count massimo => nessun preferito
+     *  - altrimenti ritorna il nome del QB (se presente in collection qbs), altrimenti l'id
+     */
+    fun loadUserDetail(uid: String, username: String, nomeTeam: String?) {
+        viewModelScope.launch {
+            _selectedUserLoading.value = true
+            _selectedUserError.value = null
+            _selectedUserDetail.value = null
+            try {
+                // prendi tutte le formations dell'utente
+                val formsSnap = db.collection("users").document(uid).collection("formations").get().await()
+                val docs = formsSnap.documents
+
+                val counts = mutableMapOf<String, Int>() // qbId -> occorrenze
+
+                for (f in docs) {
+                    val qbIdsRaw = f.get("qbIds") as? List<*>
+                    val qbIds = qbIdsRaw?.mapNotNull { it as? String } ?: emptyList()
+                    qbIds.forEach { id ->
+                        counts[id] = (counts[id] ?: 0) + 1
+                    }
+                }
+
+                if (counts.isEmpty()) {
+                    // nessuna formation => nessun preferito
+                    _selectedUserDetail.value = UserDetail(uid = uid, username = username, nomeTeam = nomeTeam, favoriteQBName = null)
+                    return@launch
+                }
+
+                val maxCount = counts.values.maxOrNull() ?: 0
+                if (maxCount == 0) {
+                    _selectedUserDetail.value = UserDetail(uid = uid, username = username, nomeTeam = nomeTeam, favoriteQBName = null)
+                    return@launch
+                }
+
+                // trova tutti i qbId che hanno occorrenza == maxCount
+                val topQbs = counts.filterValues { it == maxCount }.keys.toList()
+                if (topQbs.size != 1) {
+                    // pareggio -> nessun preferito
+                    _selectedUserDetail.value = UserDetail(uid = uid, username = username, nomeTeam = nomeTeam, favoriteQBName = null)
+                    return@launch
+                }
+
+                val favQbId = topQbs.first()
+
+                // prova a leggere il nome del QB da collection "qbs"
+                val qbDoc = try {
+                    db.collection("qbs").document(favQbId).get().await()
+                } catch (e: Exception) {
+                    null
+                }
+
+                val favName = qbDoc?.takeIf { it.exists() }?.getString("nome") ?: favQbId
+
+                _selectedUserDetail.value = UserDetail(uid = uid, username = username, nomeTeam = nomeTeam, favoriteQBName = favName)
+            } catch (e: Exception) {
+                Log.e("RankingVM", "loadUserDetail: ${e.message}", e)
+                _selectedUserError.value = e.message
+            } finally {
+                _selectedUserLoading.value = false
+            }
+        }
+    }
+
+    fun clearSelectedUserDetail() {
+        _selectedUserDetail.value = null
+        _selectedUserError.value = null
+        _selectedUserLoading.value = false
     }
 
     fun clearError() { _error.value = null }

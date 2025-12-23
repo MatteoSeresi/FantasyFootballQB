@@ -109,7 +109,7 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                             )
                             Box(modifier = Modifier.weight(0.20f), contentAlignment = Alignment.Center) {
                                 Text(
-                                    "Punteggio",
+                                    "Points",
                                     color = MaterialTheme.colorScheme.onPrimary,
                                     fontWeight = FontWeight.SemiBold
                                 )

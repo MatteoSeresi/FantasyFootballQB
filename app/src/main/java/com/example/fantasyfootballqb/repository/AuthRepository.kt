@@ -1,7 +1,6 @@
 package com.example.fantasyfootballqb.repository
 
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.AuthResult
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 

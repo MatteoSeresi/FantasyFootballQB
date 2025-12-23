@@ -9,12 +9,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.foundation.layout.padding
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.fantasyfootballqb.ui.NavGraph
-import com.example.fantasyfootballqb.ui.components.BottomBar
+import com.example.fantasyfootballqb.components.BottomBar
 import com.example.fantasyfootballqb.navigation.Routes
 import com.example.fantasyfootballqb.ui.theme.FantasyFootballTheme
 import com.google.firebase.FirebaseApp

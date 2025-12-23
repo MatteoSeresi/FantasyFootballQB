@@ -1,4 +1,4 @@
-package com.example.fantasyfootballqb.ui.components
+package com.example.fantasyfootballqb.components
 
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem

@@ -1,7 +1,6 @@
 package com.example.fantasyfootballqb.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,7 +18,6 @@ import com.example.fantasyfootballqb.ui.viewmodel.UserFormationRow
 import com.example.fantasyfootballqb.models.Game
 import com.example.fantasyfootballqb.models.QB
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clip
 import kotlinx.coroutines.launch
 import com.google.firebase.firestore.FirebaseFirestore

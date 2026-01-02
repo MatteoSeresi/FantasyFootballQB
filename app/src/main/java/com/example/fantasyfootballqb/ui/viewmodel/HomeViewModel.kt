@@ -3,17 +3,17 @@ package com.example.fantasyfootballqb.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.fantasyfootballqb.models.User
+import com.example.fantasyfootballqb.repository.FireStoreRepository
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 
 class HomeViewModel : ViewModel() {
 
     private val auth = FirebaseAuth.getInstance()
-    private val db = FirebaseFirestore.getInstance()
+    // Usiamo il repository
+    private val repository = FireStoreRepository()
 
     private val _user = MutableStateFlow<User?>(null)
     val user: StateFlow<User?> = _user
@@ -24,11 +24,8 @@ class HomeViewModel : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
-    // <-- assicurati che esista questa proprietà
     private val _success = MutableStateFlow<String?>(null)
     val success: StateFlow<String?> = _success
-
-    private var listenerRegistration: com.google.firebase.firestore.ListenerRegistration? = null
 
     init {
         observeUser()
@@ -36,27 +33,12 @@ class HomeViewModel : ViewModel() {
 
     private fun observeUser() {
         val uid = auth.currentUser?.uid ?: return
-        listenerRegistration?.remove()
-        listenerRegistration = db.collection("users").document(uid)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    _error.value = error.message
-                    return@addSnapshotListener
-                }
-
-                if (snapshot != null && snapshot.exists()) {
-                    val u = User(
-                        uid = snapshot.id,
-                        email = snapshot.getString("email") ?: auth.currentUser?.email ?: "",
-                        username = snapshot.getString("username") ?: "",
-                        nomeTeam = snapshot.getString("nomeTeam") ?: "",
-                        isAdmin = snapshot.getBoolean("isAdmin") ?: false
-                    )
-                    _user.value = u
-                } else {
-                    _user.value = null
-                }
+        viewModelScope.launch {
+            // Il repository gestisce il listener e il parsing
+            repository.observeUser(uid).collect { u ->
+                _user.value = u
             }
+        }
     }
 
     fun createOrUpdateTeam(name: String) {
@@ -68,11 +50,8 @@ class HomeViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 _loading.value = true
-                // update solo il campo nomeTeam, non toccare gli altri campi
-                db.collection("users")
-                    .document(uid)
-                    .update(mapOf("nomeTeam" to name))
-                    .await()
+                // Chiamata pulita al repository
+                repository.updateTeamName(uid, name)
 
                 _loading.value = false
                 _success.value = "Nome squadra aggiornato"
@@ -83,12 +62,6 @@ class HomeViewModel : ViewModel() {
         }
     }
 
-
     fun clearError() { _error.value = null }
     fun clearSuccess() { _success.value = null }
-
-    override fun onCleared() {
-        super.onCleared()
-        listenerRegistration?.remove()
-    }
 }

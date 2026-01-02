@@ -2,13 +2,15 @@ package com.example.fantasyfootballqb.ui.viewmodel
 
 import android.util.Log
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.fantasyfootballqb.models.Game
 import com.example.fantasyfootballqb.models.QB
+import com.example.fantasyfootballqb.repository.FireStoreRepository
 import com.google.firebase.firestore.DocumentSnapshot
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 data class StatRow(
     val qbId: String,
@@ -21,9 +23,8 @@ data class StatRow(
 
 class StatsViewModel : ViewModel() {
 
-    private val db = FirebaseFirestore.getInstance()
+    private val repository = FireStoreRepository()
 
-    // rows già filtrate (quelle mostrate in UI)
     private val _rows = MutableStateFlow<List<StatRow>>(emptyList())
     val rows: StateFlow<List<StatRow>> = _rows.asStateFlow()
 
@@ -33,25 +34,19 @@ class StatsViewModel : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
-    // cache
     private val qbsCache: MutableMap<String, QB> = mutableMapOf()
     private val gamesCache: MutableMap<String, Game> = mutableMapOf()
-
-    // ultimi documenti weekstats letti (usati per ricomputare con filtri)
     private var lastWeekstatsDocs: List<DocumentSnapshot> = emptyList()
 
-    // filtri
-    private val _selectedWeek = MutableStateFlow<Int?>(null) // null => tutte le weeks
+    private val _selectedWeek = MutableStateFlow<Int?>(null)
     val selectedWeek: StateFlow<Int?> = _selectedWeek.asStateFlow()
 
-    // ora multi-team: set di sigle selezionate (vuoto => tutte)
     private val _selectedTeams = MutableStateFlow<Set<String>>(emptySet())
     val selectedTeams: StateFlow<Set<String>> = _selectedTeams.asStateFlow()
 
     private val _searchQuery = MutableStateFlow<String>("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    // liste utili per la UI (weeks e teams disponibili)
     private val _availableWeeks = MutableStateFlow<List<Int>>(emptyList())
     val availableWeeks: StateFlow<List<Int>> = _availableWeeks.asStateFlow()
 
@@ -65,95 +60,46 @@ class StatsViewModel : ViewModel() {
     }
 
     private fun observeGames() {
-        db.collection("games")
-            .addSnapshotListener { snaps, error ->
-                if (error != null) {
-                    Log.w("StatsVM", "observeGames error: ${error.message}")
-                    _error.value = error.message
-                    return@addSnapshotListener
-                }
-                val list = snaps?.documents?.mapNotNull { d ->
-                    try {
-                        Game(
-                            id = d.id,
-                            weekNumber = (d.getLong("weekNumber") ?: 0L).toInt(),
-                            squadraCasa = d.getString("squadraCasa") ?: "",
-                            squadraOspite = d.getString("squadraOspite") ?: "",
-                            partitaGiocata = d.getBoolean("partitaGiocata") ?: false,
-                            risultato = d.getString("risultato")
-                        )
-                    } catch (e: Exception) {
-                        null
-                    }
-                } ?: emptyList()
-
+        viewModelScope.launch {
+            repository.observeGames().collect { games ->
                 gamesCache.clear()
-                list.forEach { gamesCache[it.id] = it }
-
-                // aggiorna availableWeeks
-                val weeks = list.map { it.weekNumber }.distinct().sorted()
-                _availableWeeks.value = weeks
-
-                // ricomputa con i dati correnti
+                games.forEach { gamesCache[it.id] = it }
+                _availableWeeks.value = games.map { it.weekNumber }.distinct().sorted()
                 recomputeRows()
             }
+        }
     }
 
     private fun observeQBs() {
-        db.collection("qbs")
-            .addSnapshotListener { snaps, error ->
-                if (error != null) {
-                    Log.w("StatsVM", "observeQBs error: ${error.message}")
-                    _error.value = error.message
-                    return@addSnapshotListener
-                }
-                val list = snaps?.documents?.mapNotNull { d ->
-                    try {
-                        QB(
-                            id = d.id,
-                            nome = d.getString("nome") ?: "",
-                            squadra = d.getString("squadra") ?: "",
-                            stato = d.getString("stato") ?: ""
-                        )
-                    } catch (e: Exception) {
-                        null
-                    }
-                } ?: emptyList()
-
+        viewModelScope.launch {
+            repository.observeQBs().collect { qbs ->
                 qbsCache.clear()
-                list.forEach { qbsCache[it.id] = it }
-
-                // aggiorna lista squadre disponibile (ordina alfabeticamente, uniche)
-                val teams = list.map { it.squadra }.filter { it.isNotBlank() }.distinct().sorted()
-                _availableTeams.value = teams
-
+                qbs.forEach { qbsCache[it.id] = it }
+                _availableTeams.value = qbs.map { it.squadra }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .sorted()
                 recomputeRows()
             }
+        }
     }
 
     private fun observeWeekstats() {
-        db.collection("weekstats")
-            .addSnapshotListener { snaps, error ->
-                if (error != null) {
-                    Log.w("StatsVM", "observeWeekstats error: ${error.message}")
-                    _error.value = error.message
-                    return@addSnapshotListener
-                }
-                _loading.value = true
-                val docs = snaps?.documents ?: emptyList()
+        viewModelScope.launch {
+            _loading.value = true
+            repository.observeWeekStats().collect { docs ->
                 lastWeekstatsDocs = docs
                 recomputeRows()
                 _loading.value = false
             }
+        }
     }
 
-    // setter filtri (UI li chiama)
     fun setWeekFilter(week: Int?) {
         _selectedWeek.value = week
         recomputeRows()
     }
 
-    // toggle su singola squadra (multi-select)
     fun toggleTeamSelection(team: String) {
         val cur = _selectedTeams.value.toMutableSet()
         if (cur.contains(team)) cur.remove(team) else cur.add(team)
@@ -171,86 +117,54 @@ class StatsViewModel : ViewModel() {
         recomputeRows()
     }
 
-    // funzione che applica i filtri e calcola GP/PTOT/PPG
     private fun recomputeRows() {
         try {
             val selWeek = _selectedWeek.value
-            val selTeams = _selectedTeams.value // set (vuoto => tutti)
+            val selTeams = _selectedTeams.value
             val q = _searchQuery.value.trim().lowercase()
 
-            // 1) filtra i weekstats docs in base a week (se selezionata)
             val filteredDocs = lastWeekstatsDocs.filter { doc ->
-                // filtro per weekNumber -> serve game_id -> lookup in gamesCache
                 if (selWeek != null) {
                     val gameId = doc.getString("game_id") ?: doc.getString("gameId") ?: doc.getString("game")
                     if (gameId == null) return@filter false
                     val game = gamesCache[gameId]
-                    if (game == null) return@filter false
-                    if (game.weekNumber != selWeek) return@filter false
+                    if (game == null || game.weekNumber != selWeek) return@filter false
                 }
                 true
             }
 
-            // 2) aggrega per qbId:
-            //    - vogliamo contare GP come numero di documenti con punteggio > 0 (NUOVA REGOLA)
-            //    - PTOT come somma dei punteggi > 0
             val nonZeroScores = mutableMapOf<String, MutableList<Double>>()
-            // manteniamo anche countEntries originali per eventuali casi in cui ci siano docs ma tutti = 0
             val countEntries = mutableMapOf<String, Int>()
 
             filteredDocs.forEach { doc ->
                 val qbId = doc.getString("qb_id") ?: doc.getString("qbId") ?: doc.getString("qb") ?: return@forEach
+                val raw = doc.get("punteggioQB") ?: doc.get("score") // ...altri campi se servono...
+                val value = when(raw) { is Number -> raw.toDouble(); is String -> raw.toDoubleOrNull(); else -> null }
 
-                val raw = doc.get("punteggioQB") ?: doc.get("punteggio_qb") ?: doc.get("score") ?: doc.get("punteggio") ?: doc.get("points")
-                val value: Double? = when (raw) {
-                    is Number -> raw.toDouble()
-                    is String -> raw.toDoubleOrNull()
-                    else -> null
-                }
-
-                // mantengo conteggio documenti totali (utile per debug / possibile estensione)
                 countEntries[qbId] = (countEntries[qbId] ?: 0) + 1
-
-                // PTOT considera solo valori > 0 e GP sarà il numero delle occorrenze > 0
                 if (value != null && value > 0.0) {
-                    val list = nonZeroScores.getOrPut(qbId) { mutableListOf() }
-                    list.add(value)
+                    nonZeroScores.getOrPut(qbId) { mutableListOf() }.add(value)
                 }
             }
 
-            // 3) adesso applichiamo filtro per squadra (multi) e per ricerca nome.
-            // Consideriamo i QB che compaiono almeno in countEntries (hanno almeno un doc filtrato)
             val candidateQbIds = (countEntries.keys + nonZeroScores.keys).toSet()
 
-            val rows = candidateQbIds.mapNotNull { qbId ->
-                val qb = qbsCache[qbId] ?: QB(id = qbId, nome = qbId, squadra = "", stato = "")
+            val calculatedRows = candidateQbIds.mapNotNull { qbId ->
+                val qb = qbsCache[qbId] ?: QB(qbId, qbId, "", "")
 
-                // filtro per squadra (multi): se selTeams vuoto => ok, altrimenti qb.squadra deve essere in set
-                if (selTeams.isNotEmpty()) {
-                    if (qb.squadra.isBlank() || !selTeams.contains(qb.squadra)) return@mapNotNull null
-                }
+                if (selTeams.isNotEmpty() && !selTeams.contains(qb.squadra)) return@mapNotNull null
+                if (q.isNotEmpty() && !qb.nome.lowercase().contains(q)) return@mapNotNull null
 
-                // filtro ricerca nome
-                if (q.isNotEmpty()) {
-                    val nomeLower = qb.nome.lowercase()
-                    if (!nomeLower.contains(q)) return@mapNotNull null
-                }
-
-                // GP: numero di partite con punteggio > 0 (se nulla -> 0)
                 val gp = nonZeroScores[qbId]?.size ?: 0
-
-                // PTOT: somma dei punteggi > 0 (se nulla -> 0.0)
-                val ptot = (nonZeroScores[qbId]?.sum() ?: 0.0)
-
-                // PPG: ptot diviso gp (se gp > 0), altrimenti 0.0
+                val ptot = nonZeroScores[qbId]?.sum() ?: 0.0
                 val ppg = if (gp > 0) ptot / gp else 0.0
 
-                StatRow(qbId = qbId, nome = qb.nome, squadra = qb.squadra, gp = gp, ptot = ptot, ppg = ppg)
+                StatRow(qbId, qb.nome, qb.squadra, gp, ptot, ppg)
             }.sortedByDescending { it.ptot }
 
-            _rows.value = rows
+            _rows.value = calculatedRows
         } catch (e: Exception) {
-            Log.e("StatsVM", "recomputeRows error: ${e.message}")
+            Log.e("StatsVM", "Error: ${e.message}")
         }
     }
 

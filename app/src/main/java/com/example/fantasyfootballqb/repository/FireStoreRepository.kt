@@ -257,4 +257,58 @@ class FireStoreRepository {
     suspend fun updateUserTotalScore(uid: String, newTotal: Double) {
         db.collection("users").document(uid).update("totalScore", newTotal).await()
     }
+    // --- FUNZIONI PER CALENDAR, STATS, RANKING & PROFILE ---
+
+    // Ottieni tutti gli utenti una volta sola (per Ranking)
+    suspend fun getAllUsers(): List<User> {
+        val snapshot = db.collection("users").get().await()
+        return snapshot.documents.mapNotNull { it.toUser() }
+    }
+
+    // Ottieni tutte le formazioni di un utente (Raw snapshots)
+    // Ritorniamo i documenti grezzi perché la logica di parsing dei punteggi nel Ranking è complessa e vuoi mantenerla nel VM.
+    suspend fun getUserFormations(uid: String): List<com.google.firebase.firestore.DocumentSnapshot> {
+        return db.collection("users")
+            .document(uid)
+            .collection("formations")
+            .get()
+            .await()
+            .documents
+    }
+
+    // Osserva tutte le Weekstats in tempo reale (per StatsViewModel)
+    fun observeWeekStats(): Flow<List<com.google.firebase.firestore.DocumentSnapshot>> = callbackFlow {
+        val listener = db.collection("weekstats")
+            .addSnapshotListener { snaps, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                trySend(snaps?.documents ?: emptyList())
+            }
+        awaitClose { listener.remove() }
+    }
+
+    // Aggiorna solo lo username (Profile)
+    suspend fun updateUsername(uid: String, newUsername: String) {
+        db.collection("users").document(uid).update("username", newUsername).await()
+    }
+
+    // Elimina completamente i dati utente (Formazioni + Documento User)
+    suspend fun deleteUserData(uid: String) {
+        // 1. Prendi tutte le formazioni
+        val formationsRef = db.collection("users").document(uid).collection("formations")
+        val snapshots = formationsRef.get().await()
+
+        // 2. Cancellazione in Batch per efficienza e atomicità
+        val batch = db.batch()
+        for (doc in snapshots) {
+            batch.delete(doc.reference)
+        }
+        // 3. Cancella utente
+        batch.delete(db.collection("users").document(uid))
+
+        // Esegui tutto
+        batch.commit().await()
+    }
 }

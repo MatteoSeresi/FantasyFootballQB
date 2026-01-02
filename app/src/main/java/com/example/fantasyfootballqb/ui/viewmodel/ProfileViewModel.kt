@@ -3,26 +3,20 @@ package com.example.fantasyfootballqb.ui.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.auth.EmailAuthProvider
+import com.example.fantasyfootballqb.repository.FireStoreRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-enum class PendingAction {
-    NONE,
-    UPDATE_EMAIL,
-    DELETE_ACCOUNT
-}
+enum class PendingAction { NONE, DELETE_ACCOUNT }
 
 class ProfileViewModel : ViewModel() {
 
     private val auth = FirebaseAuth.getInstance()
-    private val db = FirebaseFirestore.getInstance()
+    private val repository = FireStoreRepository()
 
     private val _email = MutableStateFlow<String?>(null)
     val email: StateFlow<String?> = _email
@@ -42,39 +36,35 @@ class ProfileViewModel : ViewModel() {
     private val _askPassword = MutableStateFlow(false)
     val askPassword: StateFlow<Boolean> = _askPassword
 
-    // se serve riprovare un'azione dopo la reauth
     private var pendingAction: PendingAction = PendingAction.NONE
-    private var pendingEmailTarget: String? = null
 
     init {
         loadUserData()
     }
 
-    fun clearMessages() {
-        _error.value = null
-        _success.value = null
-    }
+    fun clearMessages() { _error.value = null; _success.value = null }
 
     fun loadUserData() {
         viewModelScope.launch {
             try {
                 _loading.value = true
-                val user = auth.currentUser
-                if (user == null) {
-                    _error.value = "Utente non autenticato"
-                    _loading.value = false
-                    return@launch
+                val uid = auth.currentUser?.uid
+                if (uid == null) {
+                    _error.value = "Non autenticato"; _loading.value = false; return@launch
                 }
-                // preferiamo Firestore users doc per username e nomeTeam etc.
-                _email.value = user.email
-                val doc = db.collection("users").document(user.uid).get().await()
-                if (doc.exists()) {
-                    _username.value = doc.getString("username") ?: ""
-                } else {
-                    _username.value = ""
+                _email.value = auth.currentUser?.email
+
+                // Repo call (observe o get one-shot)
+                val flow = repository.observeUser(uid)
+                // Qui facciamo una collect parziale solo per prendere il primo valore,
+                // oppure usiamo collect normale se vogliamo aggiornamenti live.
+                // Per semplicità di migrazione usiamo collect in coroutine separata
+                // o passiamo a un metodo get one-shot nel repo.
+                // Dato che observeUser è Flow, lanciamo una coroutine che ascolta
+                launch {
+                    flow.collect { u -> _username.value = u?.username ?: "" }
                 }
             } catch (e: Exception) {
-                Log.e("ProfileVM", "loadUserData: ${e.message}", e)
                 _error.value = e.message
             } finally {
                 _loading.value = false
@@ -82,66 +72,15 @@ class ProfileViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Aggiorna solo lo username nel documento users/{uid}
-     */
     fun updateUsername(newUsername: String) {
         viewModelScope.launch {
             try {
                 _loading.value = true
-                val uid = auth.currentUser?.uid ?: run {
-                    _error.value = "Utente non autenticato"
-                    _loading.value = false
-                    return@launch
-                }
-                val map = mapOf("username" to newUsername)
-                db.collection("users").document(uid).set(map, SetOptions.merge()).await()
+                val uid = auth.currentUser?.uid ?: return@launch
+                repository.updateUsername(uid, newUsername)
                 _username.value = newUsername
                 _success.value = "Username aggiornato"
             } catch (e: Exception) {
-                Log.e("ProfileVM", "updateUsername: ${e.message}", e)
-                _error.value = e.message ?: "Errore aggiornamento username"
-            } finally {
-                _loading.value = false
-            }
-        }
-    }
-
-    /**
-     * Elimina i dati Firestore dell'utente (subcollection formations) e poi l'account Auth.
-     * Se Firebase richiede reauth viene richiamata la pagina password.
-     */
-    fun deleteAccount() {
-        viewModelScope.launch {
-            try {
-                _loading.value = true
-                val user = auth.currentUser ?: run {
-                    _error.value = "Utente non autenticato"
-                    _loading.value = false
-                    return@launch
-                }
-
-                try {
-                    // 1) elimina subcollection users/{uid}/formations
-                    deleteUserFormations(user.uid)
-                    // 2) elimina il doc users/{uid}
-                    db.collection("users").document(user.uid).delete().await()
-                    // 3) elimina account Authentication
-                    user.delete().await()
-                    _success.value = "Account eliminato"
-                } catch (ex: Exception) {
-                    if (ex is FirebaseAuthRecentLoginRequiredException) {
-                        // serve reauth
-                        pendingAction = PendingAction.DELETE_ACCOUNT
-                        _askPassword.value = true
-                    } else {
-                        Log.e("ProfileVM", "deleteAccount failed: ${ex.message}", ex)
-                        _error.value = ex.message ?: "Errore eliminazione account"
-                    }
-                }
-
-            } catch (e: Exception) {
-                Log.e("ProfileVM", "deleteAccount outer: ${e.message}", e)
                 _error.value = e.message
             } finally {
                 _loading.value = false
@@ -149,24 +88,28 @@ class ProfileViewModel : ViewModel() {
         }
     }
 
-    private suspend fun deleteUserFormations(uid: String) {
-        try {
-            val coll = db.collection("users").document(uid).collection("formations")
-            val snap = coll.get().await()
-            for (doc in snap.documents) {
-                // cancella ogni doc nella subcollection
-                coll.document(doc.id).delete().await()
+    fun deleteAccount() {
+        viewModelScope.launch {
+            _loading.value = true
+            val user = auth.currentUser ?: return@launch
+            try {
+                // 1. Cancella dati Firestore tramite Repo
+                repository.deleteUserData(user.uid)
+                // 2. Cancella Auth
+                user.delete().await()
+                _success.value = "Account eliminato"
+            } catch (ex: Exception) {
+                if (ex is FirebaseAuthRecentLoginRequiredException) {
+                    pendingAction = PendingAction.DELETE_ACCOUNT
+                    _askPassword.value = true
+                } else {
+                    _error.value = ex.message
+                }
+            } finally {
+                _loading.value = false
             }
-        } catch (e: Exception) {
-            // log ma non bloccare l'eliminazione se non trova subcollection
-            Log.w("ProfileVM", "deleteUserFormations: ${e.message}")
         }
     }
 
-    /**
-     * Logout locale (client) — non cancella dati.
-     */
-    fun logout() {
-        auth.signOut()
-    }
+    fun logout() { auth.signOut() }
 }

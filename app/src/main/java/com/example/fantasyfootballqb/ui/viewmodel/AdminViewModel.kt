@@ -1,6 +1,5 @@
 package com.example.fantasyfootballqb.ui.viewmodel
 
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.fantasyfootballqb.models.Game
@@ -10,7 +9,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-// Data classes per la UI Admin
 data class AdminUser(
     val uid: String,
     val email: String,
@@ -102,11 +100,23 @@ class AdminViewModel : ViewModel() {
         _selectedWeek.value = week
     }
 
-    fun updateUserData(uid: String, email: String, username: String, nomeTeam: String) {
+    fun observeWeekCalculated(week: Int) {
+        viewModelScope.launch {
+            repository.observeWeekCalculated(week).collect { isCalc ->
+                _weekCalculated.value = isCalc
+            }
+        }
+    }
+
+    // --- FUNZIONE DI AGGIORNAMENTO UTENTE  ---
+    fun updateUserData(uid: String, username: String, nomeTeam: String) {
         viewModelScope.launch {
             try {
                 _loading.value = true
-                val map = mapOf("email" to email, "username" to username, "nomeTeam" to nomeTeam)
+                val map = mapOf(
+                    "username" to username,
+                    "nomeTeam" to nomeTeam
+                )
                 repository.updateAdminUserData(uid, map)
                 _success.value = "Dati utente aggiornati"
             } catch (e: Exception) {
@@ -145,35 +155,22 @@ class AdminViewModel : ViewModel() {
         }
     }
 
-    fun observeWeekCalculated(week: Int) {
-        viewModelScope.launch {
-            repository.observeWeekCalculated(week).collect { isCalc ->
-                _weekCalculated.value = isCalc
-            }
-        }
-    }
-
-    // Logica complessa mantenuta nel VM (perché è business logic), ma usa Repo per i dati
     suspend fun validateWeek(week: Int): List<String> {
         val problems = mutableListOf<String>()
         try {
             val games = repository.getGamesForWeek(week)
             if (games.isEmpty()) return listOf("Nessuna partita per la week $week")
 
-            // 1. Verifica giocate
             games.filter { !it.partitaGiocata }.forEach { g ->
                 problems.add("${g.squadraCasa} vs ${g.squadraOspite}: Non giocata")
             }
 
-            // 2. Verifica weekstats
             for (g in games) {
-                // Qui usiamo la funzione RAW del repo per controllare i campi
                 val statsDocs = repository.getWeekStatsForGame(g.id)
                 if (statsDocs.isEmpty()) {
                     problems.add("${g.squadraCasa} vs ${g.squadraOspite}: Nessun punteggio inserito")
                     continue
                 }
-                // Validazione custom sui numeri
                 val invalid = statsDocs.any { doc ->
                     val raw = doc.get("punteggioQB")
                     when (raw) {
@@ -195,16 +192,13 @@ class AdminViewModel : ViewModel() {
             _loading.value = true
             _error.value = null
             try {
-                // Ri-validiamo velocemente
                 val errors = validateWeek(week)
                 if (errors.isNotEmpty()) {
                     _error.value = "Impossibile calcolare:\n${errors.joinToString("\n")}"
                     return@launch
                 }
 
-                // Eseguiamo il commit
                 val games = repository.getGamesForWeek(week)
-                // Filtriamo quelle non calcolate per efficienza
                 val toUpdate = games.filter { !it.partitaCalcolata }.map { it.id }
 
                 if (toUpdate.isNotEmpty()) {
@@ -230,13 +224,9 @@ class AdminViewModel : ViewModel() {
             try {
                 val games = _gamesByWeek.value[week] ?: emptyList()
                 val gameIds = games.map { it.id }
-
-                // Carichiamo TUTTE le weekstats (come facevi prima, ottimizzazione cache client)
                 val allStats = repository.getAllWeekStats()
 
-                // Indexing stats per QB
                 val statsMap = mutableMapOf<String, MutableList<Double>>()
-                // ... (tua logica di parsing manuale punteggi mantenuta intatta) ...
                 for (d in allStats) {
                     val gId = d.getString("game_id") ?: d.getString("gameId") ?: d.getString("game")
                     if (gId == null || !gameIds.contains(gId)) continue
@@ -253,18 +243,10 @@ class AdminViewModel : ViewModel() {
                     }
                 }
 
-                // Calcolo utenti
-                val allUsers = repository.observeAllUsers() // Nota: qui serve lista snapshot, ma observe ritorna flow.
-                // Fix: usiamo un metodo one-shot o leggiamo dal valore corrente
-                // Per semplicità usiamo _users.value che è già popolato dall'observer
-
                 val rows = mutableListOf<UserFormationRow>()
                 for (u in _users.value) {
                     if (u.isAdmin) continue
-
-                    // Recupera formazione puntuale
                     val qbIds = repository.getUserFormationIds(u.uid, week)
-
                     var total = 0.0
                     qbIds.forEach { qid ->
                         val scores = statsMap[qid]
@@ -291,28 +273,14 @@ class AdminViewModel : ViewModel() {
                     return@launch
                 }
 
-                // 1. Calcola punteggio della nuova formazione
-                // (Logica semplificata: riutilizziamo la loadUserFormationsForWeek dopo l'update
-                //  oppure ricalcoliamo puntualmente qui. Per brevità, manteniamo la tua logica di ricalcolo
-                //  totale, ma delegando al repository i salvataggi).
-
-                // ... (omissis logica calcolo punteggio, simile a sopra) ...
-                // Per ora salviamo solo gli ID, poiché il calcolo totale richiede i weekstats.
-                // Se vuoi mantenere la logica esatta, dovresti copiare il blocco "qbScoreMap" dal vecchio VM
-                // e passarlo al repository.
-
-                // Esempio salvataggio dati base:
                 val data = mapOf(
                     "qbIds" to newQbIds,
-                    "weekNumber" to week,
-                    // "totalWeekScore" -> va calcolato
+                    "weekNumber" to week
                 )
                 repository.updateUserFormationData(uid, week, data)
 
-                // Refresh
                 loadUserFormationsForWeek(week)
                 _success.value = "Formazione aggiornata"
-
             } catch (e: Exception) {
                 _error.value = e.message
             } finally {

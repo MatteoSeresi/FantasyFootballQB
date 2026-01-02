@@ -193,8 +193,8 @@ fun AdminScreen(
 
             // -- dialogs (users / modify games / qbs / formations ecc.) --
             if (showUsersDialog) {
-                UsersDialog(users = users.filter { !it.isAdmin }, onDismiss = { showUsersDialog = false }, onSave = { u, newEmail, newUsername, newNomeTeam ->
-                    vm.updateUserData(u.uid, newEmail, newUsername, newNomeTeam)
+                UsersDialog(users = users.filter { !it.isAdmin }, onDismiss = { showUsersDialog = false }, onSave = { u,  newUsername, newNomeTeam ->
+                    vm.updateUserData(u.uid, newUsername, newNomeTeam)
                 })
             }
 
@@ -277,7 +277,7 @@ fun AdminScreen(
  * UsersDialog: come prima, mostra lista utenti e permette modifica.
  */
 @Composable
-private fun UsersDialog(users: List<AdminUser>, onDismiss: () -> Unit, onSave: (AdminUser, String, String, String) -> Unit) {
+private fun UsersDialog(users: List<AdminUser>, onDismiss: () -> Unit, onSave: (AdminUser, String, String) -> Unit) {
     var editingUser by remember { mutableStateOf<AdminUser?>(null) }
 
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Utenti") }, text = {
@@ -311,14 +311,12 @@ private fun UsersDialog(users: List<AdminUser>, onDismiss: () -> Unit, onSave: (
 
         AlertDialog(onDismissRequest = { editingUser = null }, title = { Text("Modifica utente") }, text = {
             Column {
-                OutlinedTextField(value = newEmail, onValueChange = { newEmail = it }, label = { Text("Email (solo Firestore)") })
                 OutlinedTextField(value = newUsername, onValueChange = { newUsername = it }, label = { Text("Username") })
                 OutlinedTextField(value = newNomeTeam, onValueChange = { newNomeTeam = it }, label = { Text("Nome squadra") })
-                Text("Nota: la modifica dell'email qui aggiorna solo il documento Firestore.")
             }
         }, confirmButton = {
             TextButton(onClick = {
-                onSave(u, newEmail.trim(), newUsername.trim(), newNomeTeam.trim())
+                onSave(u, newUsername.trim(), newNomeTeam.trim())
                 editingUser = null
             }) { Text("Salva") }
         }, dismissButton = {

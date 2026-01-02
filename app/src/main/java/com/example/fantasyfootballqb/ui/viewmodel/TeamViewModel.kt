@@ -133,26 +133,31 @@ class TeamViewModel : ViewModel() {
      * Carica la prima week (min weekNumber) che ha partitaCalcolata == false.
      * Ritorna null se tutte le week sono calcolate o non ci sono games.
      */
+    /**
+     * Carica la prima week (min weekNumber) che ha partitaCalcolata == false.
+     * Versione robusta: scarica tutte le games e filtra in memoria per evitare errori di Indici mancanti.
+     */
     fun loadFirstUncalculatedWeek() {
         viewModelScope.launch {
             try {
-                val snap = db.collection("games")
-                    .whereEqualTo("partitaCalcolata", false)
-                    .orderBy("weekNumber")
-                    .limit(1)
-                    .get()
-                    .await()
+                // Scarichiamo tutte le partite.
+                // Nota: Se il campo "partitaCalcolata" manca nel DB, qui viene letto come false (corretto).
+                val snap = db.collection("games").get().await()
 
-                if (snap.isEmpty) {
-                    _firstUncalculatedWeek.value = null
-                } else {
-                    val d = snap.documents.first()
-                    val w = (d.getLong("weekNumber") ?: 0L).toInt()
-                    _firstUncalculatedWeek.value = w
-                }
+                val firstUncalculated = snap.documents
+                    .map { doc ->
+                        val week = (doc.getLong("weekNumber") ?: 0L).toInt()
+                        val isCalculated = doc.getBoolean("partitaCalcolata") ?: false
+                        week to isCalculated
+                    }
+                    .filter { (_, isCalculated) -> !isCalculated } // Tieni solo quelle NON calcolate
+                    .minByOrNull { (week, _) -> week } // Trova la week più bassa
+
+                _firstUncalculatedWeek.value = firstUncalculated?.first
             } catch (e: Exception) {
-                // se la query fallisce, logga e mantieni null (user experience degrade ma non block)
                 Log.e("TeamVM", "loadFirstUncalculatedWeek: ${e.message}", e)
+                // In caso di errore critico, non impostiamo nulla (null),
+                // ma l'errore sarà loggato.
                 _firstUncalculatedWeek.value = null
             }
         }

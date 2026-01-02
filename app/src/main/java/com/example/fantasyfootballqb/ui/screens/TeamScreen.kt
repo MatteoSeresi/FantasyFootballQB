@@ -18,8 +18,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import kotlinx.coroutines.launch
-import com.google.firebase.firestore.FirebaseFirestore
-import kotlinx.coroutines.tasks.await
 
 @Composable
 fun TeamScreen(
@@ -37,12 +35,11 @@ fun TeamScreen(
     val gamesForWeek by vm.gamesForWeek.collectAsState()
     val availableWeeks by vm.availableWeeks.collectAsState()
 
+    // --- FIX STEP 0: Usiamo lo stato del ViewModel ---
+    val firstUncalculatedWeek by vm.firstUncalculatedWeek.collectAsState()
+
     // selectedWeek: inizialmente weekDefault, poi sincronizziamo con availableWeeks se presenti
     var selectedWeek by remember { mutableStateOf(weekDefault) }
-
-    // firstUncalculatedWeek (prima week presente nelle games che NON è ancora partitaCalcolata)
-    var firstUncalculatedWeek by remember { mutableStateOf<Int?>(null) }
-    var computingFirstUncalculated by remember { mutableStateOf(false) }
 
     // selected slots: 3 nullable
     var selectedSlots by remember { mutableStateOf<List<QB?>>(listOf(null, null, null)) }
@@ -53,8 +50,6 @@ fun TeamScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
-    val db = remember { FirebaseFirestore.getInstance() }
-
     // se cambia availableWeeks e non è vuota, assicurati che selectedWeek sia valido;
     // se non è valido, imposta la week di default (qui la massima disponibile)
     LaunchedEffect(availableWeeks) {
@@ -63,11 +58,6 @@ fun TeamScreen(
             if (!availableWeeks.contains(selectedWeek)) {
                 selectedWeek = defaultWeek
             }
-        }
-        // ricalcola firstUncalculated quando availableWeeks cambia
-        computeFirstUncalculatedWeek(db, availableWeeks) { found, computing ->
-            firstUncalculatedWeek = found
-            computingFirstUncalculated = computing
         }
     }
 
@@ -197,22 +187,18 @@ fun TeamScreen(
                                     Column(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                         Text("Inserimento non consentito", fontWeight = FontWeight.Bold)
                                         Spacer(modifier = Modifier.height(8.dp))
-                                        if (computingFirstUncalculated) {
-                                            Text("Verifica in corso sulle week disponibili...", textAlign = TextAlign.Center)
+                                        if (firstUncalculatedWeek != null) {
+                                            Text(
+                                                "Non è possibile schierare la formazione per la week $selectedWeek perché è ancora in corso la week ${firstUncalculatedWeek}. " +
+                                                        "Per poter inserire la formazione devi selezionare la week in corso (${firstUncalculatedWeek}).",
+                                                textAlign = TextAlign.Center
+                                            )
                                         } else {
-                                            if (firstUncalculatedWeek != null) {
-                                                Text(
-                                                    "Non è possibile schierare la formazione per la week $selectedWeek perché è ancora in corso la week ${firstUncalculatedWeek}. " +
-                                                            "Per poter inserire la formazione devi selezionare la week in corso (${firstUncalculatedWeek}).",
-                                                    textAlign = TextAlign.Center
-                                                )
-                                            } else {
-                                                // fallback generico
-                                                Text(
-                                                    "Non è possibile schierare la formazione per la week $selectedWeek in questo momento.",
-                                                    textAlign = TextAlign.Center
-                                                )
-                                            }
+                                            // fallback generico
+                                            Text(
+                                                "Non è possibile schierare la formazione per la week $selectedWeek in questo momento.",
+                                                textAlign = TextAlign.Center
+                                            )
                                         }
                                     }
                                 }
@@ -399,56 +385,6 @@ fun TeamScreen(
     if (loading) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
-        }
-    }
-}
-
-/**
- * Coroutine helper: calcola la prima week (nell'ordine di availableWeeks)
- * per cui esiste almeno una partita con partitaCalcolata != true.
- *
- * - se availableWeeks è vuoto -> ritorna null
- * - imposta il callback con (foundWeek?, computingFlag)
- */
-private fun computeFirstUncalculatedWeek(
-    db: FirebaseFirestore,
-    availableWeeks: List<Int>,
-    onResult: (Int?, Boolean) -> Unit
-) {
-    // launch a coroutine via rememberCoroutineScope from caller (we cannot access it here),
-    // so instead caller uses LaunchedEffect and invokes this suspend logic.
-    // To make it simple, we start a coroutine on the common pool:
-    kotlinx.coroutines.GlobalScope.launch {
-        try {
-            onResult(null, true)
-            if (availableWeeks.isEmpty()) {
-                onResult(null, false)
-                return@launch
-            }
-            // iterate in ascending order
-            val sorted = availableWeeks.sorted()
-            var found: Int? = null
-            for (w in sorted) {
-                val snaps = db.collection("games")
-                    .whereEqualTo("weekNumber", w)
-                    .get()
-                    .await()
-                val docs = snaps.documents
-                if (docs.isEmpty()) {
-                    // if no games for this week, skip
-                    continue
-                }
-                // if any doc has partitaCalcolata != true => this week is not completely calculated
-                val anyNotCalculated = docs.any { it.getBoolean("partitaCalcolata") != true }
-                if (anyNotCalculated) {
-                    found = w
-                    break
-                }
-            }
-            onResult(found, false)
-        } catch (e: Exception) {
-            // on error, return null and stop computing
-            onResult(null, false)
         }
     }
 }

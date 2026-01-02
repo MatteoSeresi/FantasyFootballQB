@@ -171,4 +171,90 @@ class FireStoreRepository {
             .await()
             .documents
     }
+
+    // --- ADMIN FUNCTIONS ---
+
+    // Osserva TUTTI gli utenti (per la lista Admin)
+    fun observeAllUsers(): Flow<List<User>> = callbackFlow {
+        val listener = db.collection("users")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                val users = snapshot?.documents?.mapNotNull { it.toUser() } ?: emptyList()
+                trySend(users)
+            }
+        awaitClose { listener.remove() }
+    }
+
+    // Aggiorna dati utente (Admin override)
+    suspend fun updateAdminUserData(uid: String, data: Map<String, Any?>) {
+        db.collection("users").document(uid).set(data, SetOptions.merge()).await()
+    }
+
+    // Aggiorna risultato partita
+    suspend fun updateGameResult(gameId: String, played: Boolean, result: String?) {
+        val map = mutableMapOf<String, Any?>("partitaGiocata" to played)
+        map["risultato"] = result
+        db.collection("games").document(gameId).set(map, SetOptions.merge()).await()
+    }
+
+    // Imposta punteggio QB (Weekstats)
+    suspend fun setQBScore(gameId: String, qbId: String, score: Double) {
+        val coll = db.collection("weekstats")
+        val qsnap = coll
+            .whereEqualTo("game_id", gameId)
+            .whereEqualTo("qb_id", qbId)
+            .get()
+            .await()
+
+        if (!qsnap.isEmpty) {
+            val doc = qsnap.documents.first()
+            coll.document(doc.id).set(mapOf("punteggioQB" to score), SetOptions.merge()).await()
+        } else {
+            val newDoc = mapOf(
+                "game_id" to gameId,
+                "qb_id" to qbId,
+                "punteggioQB" to score
+            )
+            coll.add(newDoc).await()
+        }
+    }
+
+    // Ottieni tutte le weekstats (utile per calcoli massivi o validazione)
+    suspend fun getAllWeekStats(): List<com.google.firebase.firestore.DocumentSnapshot> {
+        return db.collection("weekstats").get().await().documents
+    }
+
+    // Ottieni weekstats per una specifica partita (per validazione puntuale)
+    suspend fun getWeekStatsForGame(gameId: String): List<com.google.firebase.firestore.DocumentSnapshot> {
+        return db.collection("weekstats").whereEqualTo("game_id", gameId).get().await().documents
+    }
+
+    // Calcola Week (segna tutte le partite della week come calcolate)
+    suspend fun markWeekAsCalculated(week: Int, gameIds: List<String>) {
+        if (gameIds.isEmpty()) return
+        val batch = db.batch()
+        gameIds.forEach { gid ->
+            val ref = db.collection("games").document(gid)
+            batch.update(ref, "partitaCalcolata", true)
+        }
+        batch.commit().await()
+    }
+
+    // Aggiorna formazione utente (Admin override)
+    suspend fun updateUserFormationData(uid: String, week: Int, data: Map<String, Any?>) {
+        db.collection("users")
+            .document(uid)
+            .collection("formations")
+            .document(week.toString())
+            .set(data, SetOptions.merge())
+            .await()
+    }
+
+    // Aggiorna punteggio totale utente
+    suspend fun updateUserTotalScore(uid: String, newTotal: Double) {
+        db.collection("users").document(uid).update("totalScore", newTotal).await()
+    }
 }

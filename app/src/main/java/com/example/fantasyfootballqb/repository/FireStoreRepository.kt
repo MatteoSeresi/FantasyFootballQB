@@ -4,6 +4,7 @@ import com.example.fantasyfootballqb.models.Game
 import com.example.fantasyfootballqb.models.QB
 import com.example.fantasyfootballqb.models.User
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -54,7 +55,13 @@ class FireStoreRepository {
         val listener = db.collection("users").document(uid)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error) // o gestisci l'errore diversamente
+                    // SE L'ERRORE È "PERMISSION_DENIED" (succede al logout),
+                    // chiudiamo il flusso gentilmente senza lanciare l'eccezione che fa crashare l'app.
+                    if (error.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+                        close()
+                    } else {
+                        close(error)
+                    }
                     return@addSnapshotListener
                 }
                 if (snapshot != null && snapshot.exists()) {

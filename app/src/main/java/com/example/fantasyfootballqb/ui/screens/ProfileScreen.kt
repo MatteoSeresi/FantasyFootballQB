@@ -26,13 +26,8 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-
-    // UI states for edit dialogs
-    var showEditEmail by remember { mutableStateOf(false) }
     var showEditUsername by remember { mutableStateOf(false) }
     var showConfirmDelete by remember { mutableStateOf(false) }
-    // password for reauth dialog
-    var passwordForReauth by remember { mutableStateOf("") }
 
     // show messages
     LaunchedEffect(error) {
@@ -58,7 +53,6 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { paddingValues ->
-        // usiamo paddingValues fornito dallo Scaffold
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -79,7 +73,7 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
                     Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Profilo", style = MaterialTheme.typography.titleMedium)
 
-                        // Email row
+                        // Email row (read-only) — rimosso IconButton di modifica email
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Email", style = MaterialTheme.typography.bodySmall)
@@ -87,12 +81,10 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
                                     Text(email ?: "", modifier = Modifier.padding(12.dp))
                                 }
                             }
-                            IconButton(onClick = { showEditEmail = true }) {
-                                Icon(Icons.Default.Edit, contentDescription = "Modifica Email")
-                            }
+                            // ICONBUTTON RIMOSSO: non si può più modificare l'email dall'app
                         }
 
-                        // Username row
+                        // Username row (modificabile)
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Username", style = MaterialTheme.typography.bodySmall)
@@ -137,31 +129,6 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
                 }
             }
 
-            // Edit Email dialog
-            if (showEditEmail) {
-                var newEmail by remember { mutableStateOf(email ?: "") }
-                AlertDialog(
-                    onDismissRequest = { showEditEmail = false },
-                    title = { Text("Modifica Email") },
-                    text = {
-                        Column {
-                            OutlinedTextField(value = newEmail, onValueChange = { newEmail = it }, singleLine = true, label = { Text("Email") })
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("Attenzione: per aggiornare l'email potrebbe essere richiesta la password recente.")
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            showEditEmail = false
-                            vm.updateEmail(newEmail.trim())
-                        }) { Text("Salva") }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showEditEmail = false }) { Text("Annulla") }
-                    }
-                )
-            }
-
             // Edit Username dialog
             if (showEditUsername) {
                 var newUsername by remember { mutableStateOf(username ?: "") }
@@ -199,31 +166,6 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
                     },
                     dismissButton = {
                         TextButton(onClick = { showConfirmDelete = false }) { Text("Annulla") }
-                    }
-                )
-            }
-
-            // Reauth password dialog
-            if (askPassword) {
-                var pwd by remember { mutableStateOf("") }
-                AlertDialog(
-                    onDismissRequest = { /* non dismiss automatico */ },
-                    title = { Text("Re-authentication") },
-                    text = {
-                        Column {
-                            Text("Per completare l'operazione inserisci la password del tuo account.")
-                            OutlinedTextField(value = pwd, onValueChange = { pwd = it }, singleLine = true, label = { Text("Password") })
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            vm.reauthenticateWithPassword(pwd)
-                        }) { Text("Conferma") }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = {
-                            vm.clearMessages()
-                        }) { Text("Annulla") }
                     }
                 )
             }

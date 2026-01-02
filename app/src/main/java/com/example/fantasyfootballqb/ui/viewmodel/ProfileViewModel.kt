@@ -108,47 +108,6 @@ class ProfileViewModel : ViewModel() {
     }
 
     /**
-     * Aggiorna l'email dell'utente. Se Firebase segnala che è necessaria una reauth,
-     * segnaliamo la richiesta di password (askPassword = true) e salviamo l'azione pendente.
-     */
-    fun updateEmail(newEmail: String) {
-        viewModelScope.launch {
-            try {
-                _loading.value = true
-                val user = auth.currentUser ?: run {
-                    _error.value = "Utente non autenticato"
-                    _loading.value = false
-                    return@launch
-                }
-
-                try {
-                    user.updateEmail(newEmail).await()
-                    // aggiorna anche il campo email nel documento users (opzionale ma utile)
-                    db.collection("users").document(user.uid).set(mapOf("email" to newEmail), SetOptions.merge()).await()
-                    _email.value = newEmail
-                    _success.value = "Email aggiornata"
-                } catch (ex: Exception) {
-                    // Gestione reauth richiesta
-                    if (ex is FirebaseAuthRecentLoginRequiredException) {
-                        pendingAction = PendingAction.UPDATE_EMAIL
-                        pendingEmailTarget = newEmail
-                        _askPassword.value = true
-                    } else {
-                        Log.e("ProfileVM", "updateEmail failed: ${ex.message}", ex)
-                        _error.value = ex.message ?: "Errore aggiornamento email"
-                    }
-                }
-
-            } catch (e: Exception) {
-                Log.e("ProfileVM", "updateEmail outer: ${e.message}", e)
-                _error.value = e.message
-            } finally {
-                _loading.value = false
-            }
-        }
-    }
-
-    /**
      * Elimina i dati Firestore dell'utente (subcollection formations) e poi l'account Auth.
      * Se Firebase richiede reauth viene richiamata la pagina password.
      */
@@ -184,50 +143,6 @@ class ProfileViewModel : ViewModel() {
             } catch (e: Exception) {
                 Log.e("ProfileVM", "deleteAccount outer: ${e.message}", e)
                 _error.value = e.message
-            } finally {
-                _loading.value = false
-            }
-        }
-    }
-
-    /**
-     * Reautentica con email + password (l'email la prendiamo dall'utente autenticato).
-     * Se la reauth riesce, tenta di nuovo l'azione pendente (updateEmail o deleteAccount).
-     */
-    fun reauthenticateWithPassword(password: String) {
-        viewModelScope.launch {
-            try {
-                _loading.value = true
-                val user = auth.currentUser ?: run {
-                    _error.value = "Utente non autenticato"
-                    _loading.value = false
-                    return@launch
-                }
-                val emailAddr = user.email ?: run {
-                    _error.value = "Email non disponibile per reauth"
-                    _loading.value = false
-                    return@launch
-                }
-                val cred = EmailAuthProvider.getCredential(emailAddr, password)
-                user.reauthenticate(cred).await()
-                _askPassword.value = false
-                // retry pending action
-                when (pendingAction) {
-                    PendingAction.UPDATE_EMAIL -> {
-                        val target = pendingEmailTarget
-                        pendingEmailTarget = null
-                        pendingAction = PendingAction.NONE
-                        if (target != null) updateEmail(target)
-                    }
-                    PendingAction.DELETE_ACCOUNT -> {
-                        pendingAction = PendingAction.NONE
-                        deleteAccount()
-                    }
-                    else -> { /* niente */ }
-                }
-            } catch (e: Exception) {
-                Log.e("ProfileVM", "reauth failed: ${e.message}", e)
-                _error.value = e.message ?: "Re-authentication fallita"
             } finally {
                 _loading.value = false
             }

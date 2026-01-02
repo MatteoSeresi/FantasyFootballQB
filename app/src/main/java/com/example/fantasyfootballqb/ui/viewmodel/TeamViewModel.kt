@@ -3,16 +3,13 @@ package com.example.fantasyfootballqb.ui.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.fantasyfootballqb.models.QB
 import com.example.fantasyfootballqb.models.Game
+import com.example.fantasyfootballqb.models.QB
+import com.example.fantasyfootballqb.repository.FireStoreRepository
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ListenerRegistration
-import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 
 data class QBWithScore(
     val qb: QB,
@@ -21,7 +18,9 @@ data class QBWithScore(
 )
 
 class TeamViewModel : ViewModel() {
-    private val db = FirebaseFirestore.getInstance()
+
+    // Inizializziamo il Repository (in un'app più grande useremmo Hilt/Koin per iniettarlo)
+    private val repository = FireStoreRepository()
     private val auth = FirebaseAuth.getInstance()
 
     private val _availableQBs = MutableStateFlow<List<QB>>(emptyList())
@@ -39,22 +38,17 @@ class TeamViewModel : ViewModel() {
     private val _userTeamName = MutableStateFlow<String?>(null)
     val userTeamName: StateFlow<String?> = _userTeamName
 
-    // games della week corrente
     private val _gamesForWeek = MutableStateFlow<List<Game>>(emptyList())
     val gamesForWeek: StateFlow<List<Game>> = _gamesForWeek
 
-    // lista delle week effettivamente presenti nelle games (es. [1,2,3,4,5])
     private val _availableWeeks = MutableStateFlow<List<Int>>(emptyList())
     val availableWeeks: StateFlow<List<Int>> = _availableWeeks
 
-    // PRIMA week non ancora calcolata (null se nessuna)
     private val _firstUncalculatedWeek = MutableStateFlow<Int?>(null)
     val firstUncalculatedWeek: StateFlow<Int?> = _firstUncalculatedWeek
 
-    // weekCalculated (derived from games.partitaCalcolata)
     private val _weekCalculated = MutableStateFlow(false)
     val weekCalculated: StateFlow<Boolean> = _weekCalculated
-    private var weekGamesListener: ListenerRegistration? = null
 
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading
@@ -65,63 +59,38 @@ class TeamViewModel : ViewModel() {
     init {
         observeQBs()
         loadUserProfile()
-        // carica le week disponibili all'avvio
         loadAvailableWeeks()
-        // calcolo iniziale della prima week non calcolata
         loadFirstUncalculatedWeek()
     }
 
     private fun observeQBs() {
-        db.collection("qbs")
-            .addSnapshotListener { snaps, err ->
-                if (err != null) {
-                    _error.value = err.message
-                    return@addSnapshotListener
-                }
-                val list = snaps?.documents?.mapNotNull { d ->
-                    try {
-                        QB(
-                            id = d.id,
-                            nome = d.getString("nome") ?: "",
-                            squadra = d.getString("squadra") ?: "",
-                            stato = d.getString("stato") ?: ""
-                        )
-                    } catch (e: Exception) {
-                        null
-                    }
-                }?.filter { it.stato.equals("Titolare", ignoreCase = true) } ?: emptyList()
-                _availableQBs.value = list
-            }
-    }
-
-    private fun loadUserProfile() {
         viewModelScope.launch {
-            try {
-                val uid = auth.currentUser?.uid ?: return@launch
-                val doc = db.collection("users").document(uid).get().await()
-                _userTeamName.value = if (doc.exists()) doc.getString("nomeTeam") ?: "" else ""
-            } catch (e: Exception) {
-                Log.e("TeamVM", "loadUserProfile: ${e.message}", e)
-                _error.value = e.message
+            // repository.observeQBs() ci restituisce già oggetti QB mappati
+            repository.observeQBs().collect { qbs ->
+                _availableQBs.value = qbs.filter { it.stato.equals("Titolare", ignoreCase = true) }
             }
         }
     }
 
-    /**
-     * Carica le week distinte presenti nella collezione "games".
-     */
+    private fun loadUserProfile() {
+        viewModelScope.launch {
+            val uid = auth.currentUser?.uid ?: return@launch
+            repository.observeUser(uid).collect { user ->
+                _userTeamName.value = user?.nomeTeam ?: ""
+            }
+        }
+    }
+
     fun loadAvailableWeeks() {
         viewModelScope.launch {
             try {
-                val snaps = db.collection("games").get().await()
-                val weeks = snaps.documents.mapNotNull { d ->
-                    val w = d.getLong("weekNumber") ?: return@mapNotNull null
-                    w.toInt()
-                }.distinct().sorted()
+                // Scarichiamo tutte le partite per estrarre le week
+                val games = repository.getAllGames()
+                val weeks = games.map { it.weekNumber }.distinct().sorted()
                 _availableWeeks.value = weeks
 
-                // aggiorna anche la firstUncalculatedWeek
-                loadFirstUncalculatedWeek()
+                // Aggiorniamo anche la firstUncalculatedWeek per sicurezza
+                calculateFirstUncalculatedInternal(games)
             } catch (e: Exception) {
                 Log.e("TeamVM", "loadAvailableWeeks: ${e.message}", e)
                 _error.value = e.message
@@ -129,80 +98,38 @@ class TeamViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Carica la prima week (min weekNumber) che ha partitaCalcolata == false.
-     * Ritorna null se tutte le week sono calcolate o non ci sono games.
-     */
-    /**
-     * Carica la prima week (min weekNumber) che ha partitaCalcolata == false.
-     * Versione robusta: scarica tutte le games e filtra in memoria per evitare errori di Indici mancanti.
-     */
     fun loadFirstUncalculatedWeek() {
         viewModelScope.launch {
             try {
-                // Scarichiamo tutte le partite.
-                // Nota: Se il campo "partitaCalcolata" manca nel DB, qui viene letto come false (corretto).
-                val snap = db.collection("games").get().await()
-
-                val firstUncalculated = snap.documents
-                    .map { doc ->
-                        val week = (doc.getLong("weekNumber") ?: 0L).toInt()
-                        val isCalculated = doc.getBoolean("partitaCalcolata") ?: false
-                        week to isCalculated
-                    }
-                    .filter { (_, isCalculated) -> !isCalculated } // Tieni solo quelle NON calcolate
-                    .minByOrNull { (week, _) -> week } // Trova la week più bassa
-
-                _firstUncalculatedWeek.value = firstUncalculated?.first
+                val games = repository.getAllGames()
+                calculateFirstUncalculatedInternal(games)
             } catch (e: Exception) {
                 Log.e("TeamVM", "loadFirstUncalculatedWeek: ${e.message}", e)
-                // In caso di errore critico, non impostiamo nulla (null),
-                // ma l'errore sarà loggato.
                 _firstUncalculatedWeek.value = null
             }
         }
     }
 
+    // Logica helper per trovare la prima week non calcolata (in memoria)
+    private fun calculateFirstUncalculatedInternal(games: List<Game>) {
+        val firstUncalc = games
+            .filter { !it.partitaCalcolata }
+            .minByOrNull { it.weekNumber }
+        _firstUncalculatedWeek.value = firstUncalc?.weekNumber
+    }
+
     fun observeWeekCalculated(week: Int) {
-        weekGamesListener?.remove()
-        weekGamesListener = db.collection("games")
-            .whereEqualTo("weekNumber", week)
-            .addSnapshotListener { snaps, err ->
-                if (err != null) {
-                    _weekCalculated.value = false
-                    return@addSnapshotListener
-                }
-                val docs = snaps?.documents ?: emptyList()
-                if (docs.isEmpty()) {
-                    _weekCalculated.value = false
-                } else {
-                    val allCalculated = docs.all { it.getBoolean("partitaCalcolata") == true }
-                    _weekCalculated.value = allCalculated
-                }
+        viewModelScope.launch {
+            repository.observeWeekCalculated(week).collect { isCalculated ->
+                _weekCalculated.value = isCalculated
             }
+        }
     }
 
     fun loadGamesForWeek(week: Int) {
         viewModelScope.launch {
             try {
-                val snaps = db.collection("games").whereEqualTo("weekNumber", week).get().await()
-                val games = snaps.documents.mapNotNull { d ->
-                    try {
-                        val weekNum = (d.getLong("weekNumber") ?: 0L).toInt()
-                        Game(
-                            id = d.id,
-                            weekNumber = weekNum,
-                            squadraCasa = d.getString("squadraCasa") ?: "",
-                            squadraOspite = d.getString("squadraOspite") ?: "",
-                            partitaGiocata = d.getBoolean("partitaGiocata") ?: false,
-                            risultato = d.getString("risultato"),
-                            partitaCalcolata = d.getBoolean("partitaCalcolata") ?: false
-                        )
-                    } catch (e: Exception) {
-                        null
-                    }
-                }
-                _gamesForWeek.value = games
+                _gamesForWeek.value = repository.getGamesForWeek(week)
             } catch (e: Exception) {
                 Log.e("TeamVM", "loadGamesForWeek: ${e.message}", e)
                 _error.value = e.message
@@ -210,9 +137,6 @@ class TeamViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Carica la formazione dell'utente per la week, popola _formationQBs e carica i punteggi (formationScores).
-     */
     fun loadUserFormationForWeek(week: Int) {
         viewModelScope.launch {
             _loading.value = true
@@ -224,41 +148,29 @@ class TeamViewModel : ViewModel() {
                     return@launch
                 }
 
-                // fetch games for week to be able to resolve opponents
+                // Carica giochi e osserva stato week
                 loadGamesForWeek(week)
                 observeWeekCalculated(week)
 
-                val docRef = db.collection("users").document(uid).collection("formations").document(week.toString())
-                val snap = docRef.get().await()
-                if (!snap.exists()) {
-                    _formationQBs.value = emptyList()
-                    _formationLocked.value = null
-                    _formationScores.value = emptyList()
+                // 1. Controlla se è locked
+                val isLocked = repository.isFormationLocked(uid, week)
+                _formationLocked.value = isLocked
+
+                // 2. Recupera gli ID dei QB
+                val qbIds = repository.getUserFormationIds(uid, week)
+
+                if (qbIds.isNotEmpty()) {
+                    // 3. Recupera gli oggetti QB completi usando il nuovo metodo del Repo
+                    val qbList = qbIds.mapNotNull { id -> repository.getQB(id) }
+                    _formationQBs.value = qbList
+
+                    // 4. Carica i punteggi
+                    loadScoresForFormation(qbList, week)
                 } else {
-                    val qbIds = snap.get("qbIds") as? List<*>
-                    val locked = snap.getBoolean("locked") ?: false
-                    _formationLocked.value = locked
-                    if (qbIds != null) {
-                        val qblist = qbIds.mapNotNull { id ->
-                            if (id is String) {
-                                val qbDoc = db.collection("qbs").document(id).get().await()
-                                if (qbDoc.exists()) {
-                                    QB(
-                                        id = qbDoc.id,
-                                        nome = qbDoc.getString("nome") ?: "",
-                                        squadra = qbDoc.getString("squadra") ?: "",
-                                        stato = qbDoc.getString("stato") ?: ""
-                                    )
-                                } else null
-                            } else null
-                        }
-                        _formationQBs.value = qblist
-                        loadScoresForFormation(qblist, week)
-                    } else {
-                        _formationQBs.value = emptyList()
-                        _formationScores.value = emptyList()
-                    }
+                    _formationQBs.value = emptyList()
+                    _formationScores.value = emptyList()
                 }
+
             } catch (e: Exception) {
                 Log.e("TeamVM", "loadUserFormationForWeek: ${e.message}", e)
                 _error.value = e.message
@@ -268,10 +180,6 @@ class TeamViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Submit formation
-     * NOTE: write in a single operation to avoid permission/update race.
-     */
     fun submitFormation(week: Int, qbIds: List<String>) {
         if (qbIds.size != 3) {
             _error.value = "Devi selezionare 3 QB distinti"
@@ -286,22 +194,14 @@ class TeamViewModel : ViewModel() {
                     _loading.value = false
                     return@launch
                 }
-                val docRef = db.collection("users").document(uid).collection("formations").document(week.toString())
 
-                // scrittura in UN'OPERAZIONE sola: evita il secondo update che generava PERMISSION_DENIED
-                val data: MutableMap<String, Any?> = mutableMapOf(
-                    "weekNumber" to week,
-                    "qbIds" to qbIds,
-                    // impostiamo direttamente locked = true (formation "inserita")
-                    "locked" to true
-                )
+                repository.submitFormation(uid, week, qbIds)
 
-                docRef.set(data, SetOptions.merge()).await()
-
-                // ricarica la formazione dall'UI
+                // Ricarica la formazione
                 loadUserFormationForWeek(week)
-                // refresh firstUncalculatedWeek (opzionale: potrebbe cambiare a seguito di calcoli esterni)
+                // Ricalcola le week disponibili/calcolate
                 loadFirstUncalculatedWeek()
+
             } catch (e: Exception) {
                 Log.e("TeamVM", "submitFormation: ${e.message}", e)
                 _error.value = e.message
@@ -311,37 +211,18 @@ class TeamViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Carica i punteggi associati ai QB della formazione per la week.
-     * Inoltre risolve l'avversaria per ciascun QB (opponentTeam).
-     */
     private fun loadScoresForFormation(qbs: List<QB>, week: Int) {
         viewModelScope.launch {
             _loading.value = true
-            _error.value = null
             try {
-                // prendi games per la week (se non già caricati)
-                val games = if (_gamesForWeek.value.isNotEmpty()) _gamesForWeek.value else {
-                    val snaps = db.collection("games").whereEqualTo("weekNumber", week).get().await()
-                    snaps.documents.mapNotNull { d ->
-                        try {
-                            val weekNum = (d.getLong("weekNumber") ?: 0L).toInt()
-                            Game(
-                                id = d.id,
-                                weekNumber = weekNum,
-                                squadraCasa = d.getString("squadraCasa") ?: "",
-                                squadraOspite = d.getString("squadraOspite") ?: "",
-                                partitaGiocata = d.getBoolean("partitaGiocata") ?: false,
-                                risultato = d.getString("risultato"),
-                                partitaCalcolata = d.getBoolean("partitaCalcolata") ?: false
-                            )
-                        } catch (e: Exception) {
-                            null
-                        }
-                    }
+                // Recupera le partite se non ci sono
+                val games = if (_gamesForWeek.value.isNotEmpty() && _gamesForWeek.value.first().weekNumber == week) {
+                    _gamesForWeek.value
+                } else {
+                    repository.getGamesForWeek(week)
                 }
 
-                // mappa team -> opponent per rapida risoluzione
+                // Mappa team -> opponent
                 val teamToOpponent = mutableMapOf<String, String>()
                 for (g in games) {
                     teamToOpponent[g.squadraCasa] = g.squadraOspite
@@ -350,19 +231,22 @@ class TeamViewModel : ViewModel() {
 
                 val results = mutableListOf<QBWithScore>()
                 for (qb in qbs) {
-                    // cerca weekstats per qb nella settimana (potrebbe esserci più di un doc, prendiamo il primo matching per i games della week)
-                    val wsSnap = db.collection("weekstats").whereEqualTo("qb_id", qb.id).get().await()
+                    // Ottieni i documenti raw dei punteggi per questo QB dal Repo
+                    val wsDocs = repository.getWeekStatsForQb(qb.id)
+
                     var foundScore: Double? = null
-                    for (doc in wsSnap.documents) {
+
+                    // Cerca il documento che corrisponde a una delle partite di questa week
+                    for (doc in wsDocs) {
                         val gameId = doc.getString("game_id") ?: doc.getString("gameId")
                         if (gameId != null && games.any { it.id == gameId }) {
+                            // Trovato! Applichiamo la tua logica di parsing specifica
                             val raw = doc.get("punteggioQB") ?: doc.get("punteggio_qb") ?: doc.get("punteggio")
-                            val valnum: Double? = when (raw) {
+                            foundScore = when (raw) {
                                 is Number -> raw.toDouble()
                                 is String -> raw.toDoubleOrNull()
                                 else -> null
                             }
-                            foundScore = valnum
                             break
                         }
                     }
@@ -380,9 +264,4 @@ class TeamViewModel : ViewModel() {
     }
 
     fun clearError() { _error.value = null }
-
-    override fun onCleared() {
-        super.onCleared()
-        weekGamesListener?.remove()
-    }
 }

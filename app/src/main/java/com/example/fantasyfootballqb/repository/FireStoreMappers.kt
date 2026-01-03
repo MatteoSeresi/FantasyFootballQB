@@ -4,6 +4,7 @@ import com.example.fantasyfootballqb.models.Game
 import com.example.fantasyfootballqb.models.QB
 import com.example.fantasyfootballqb.models.User
 import com.example.fantasyfootballqb.models.WeekStats
+import com.example.fantasyfootballqb.models.Formation
 import com.google.firebase.firestore.DocumentSnapshot
 
 
@@ -78,6 +79,44 @@ fun DocumentSnapshot.toWeekStats(): WeekStats? {
             gameId = gId,
             qbId = qId,
             punteggio = scoreValue
+        )
+    } catch (e: Exception) {
+        null
+    }
+}
+
+fun DocumentSnapshot.toFormation(): Formation? {
+    return try {
+        // 1. Recupera weekNumber (prova field o usa id documento)
+        val wNum = this.getLong("weekNumber")?.toInt()
+            ?: this.getLong("week")?.toInt()
+            ?: this.id.toIntOrNull()
+            ?: 0
+
+        // 2. Recupera la lista di QB
+        val ids = (this.get("qbIds") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+
+        // 3. Recupera stato locked
+        val isLocked = this.getBoolean("locked") ?: false
+
+        // 4. Recupera eventuale totale salvato (gestisce nomi sporchi)
+        val rawScore = this.get("totalWeekScore")
+            ?: this.get("totalScore")
+            ?: this.get("punteggio")
+            ?: this.get("punteggioQbs")
+
+        val scoreVal = when (rawScore) {
+            is Number -> rawScore.toDouble()
+            is String -> rawScore.toDoubleOrNull()
+            else -> null
+        }
+
+        Formation(
+            id = this.id,
+            weekNumber = wNum,
+            qbIds = ids,
+            locked = isLocked,
+            totalScore = scoreVal
         )
     } catch (e: Exception) {
         null

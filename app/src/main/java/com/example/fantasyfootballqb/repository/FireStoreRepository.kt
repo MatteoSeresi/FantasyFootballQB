@@ -3,7 +3,7 @@ package com.example.fantasyfootballqb.repository
 import com.example.fantasyfootballqb.models.Game
 import com.example.fantasyfootballqb.models.QB
 import com.example.fantasyfootballqb.models.User
-import com.example.fantasyfootballqb.models.WeekStats
+import com.example.fantasyfootballqb.models.Formation
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
@@ -119,30 +119,24 @@ class FireStoreRepository {
         return snapshot.documents.mapNotNull { it.toGame() }
     }
 
-    // Ottieni gli ID dei QB schierati in una formazione utente
-    suspend fun getUserFormationIds(uid: String, week: Int): List<String> {
+    suspend fun getFormation(uid: String, week: Int): Formation? {
         val doc = db.collection("users")
             .document(uid)
             .collection("formations")
             .document(week.toString())
             .get()
             .await()
-
-        if (doc.exists()) {
-            return (doc.get("qbIds") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
-        }
-        return emptyList()
+        return doc.toFormation()
     }
 
-    // Controlla se una formazione è bloccata (locked)
-    suspend fun isFormationLocked(uid: String, week: Int): Boolean {
-        val doc = db.collection("users")
+    // Ottieni gli ID dei QB schierati in una formazione utente
+    suspend fun getUserFormations(uid: String): List<Formation> {
+        val snapshot = db.collection("users")
             .document(uid)
             .collection("formations")
-            .document(week.toString())
             .get()
             .await()
-        return doc.getBoolean("locked") ?: false
+        return snapshot.documents.mapNotNull { it.toFormation() }
     }
 
     // Salva la formazione (User side)
@@ -263,27 +257,12 @@ class FireStoreRepository {
             .await()
     }
 
-    // Aggiorna punteggio totale utente
-    suspend fun updateUserTotalScore(uid: String, newTotal: Double) {
-        db.collection("users").document(uid).update("totalScore", newTotal).await()
-    }
     // --- FUNZIONI PER CALENDAR, STATS, RANKING & PROFILE ---
 
     // Ottieni tutti gli utenti una volta sola (per Ranking)
     suspend fun getAllUsers(): List<User> {
         val snapshot = db.collection("users").get().await()
         return snapshot.documents.mapNotNull { it.toUser() }
-    }
-
-    // Ottieni tutte le formazioni di un utente (Raw snapshots)
-    // Ritorniamo i documenti grezzi perché la logica di parsing dei punteggi nel Ranking è complessa e vuoi mantenerla nel VM.
-    suspend fun getUserFormations(uid: String): List<com.google.firebase.firestore.DocumentSnapshot> {
-        return db.collection("users")
-            .document(uid)
-            .collection("formations")
-            .get()
-            .await()
-            .documents
     }
 
     // Osserva tutte le Weekstats in tempo reale (per StatsViewModel)

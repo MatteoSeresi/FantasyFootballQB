@@ -214,6 +214,7 @@ class AdminViewModel : ViewModel() {
         }
     }
 
+
     fun loadUserFormationsForWeek(week: Int?) {
         viewModelScope.launch {
             if (week == null) {
@@ -223,17 +224,11 @@ class AdminViewModel : ViewModel() {
             try {
                 val games = _gamesByWeek.value[week] ?: emptyList()
                 val gameIds = games.map { it.id }
+                val allStats = repository.getAllWeekStats() // List<WeekStats>
 
-                // Otteniamo oggetti WeekStats puliti (non DocumentSnapshot)
-                val allStats = repository.getAllWeekStats()
-
-                // Mappa: QB_ID -> Lista di Punteggi
                 val statsMap = mutableMapOf<String, MutableList<Double>>()
-
                 for (stat in allStats) {
-                    // Controllo se la statistica appartiene a una partita di questa week
                     if (gameIds.contains(stat.gameId)) {
-                        // Aggiungo il punteggio pulito alla mappa
                         statsMap.getOrPut(stat.qbId) { mutableListOf() }.add(stat.punteggio)
                     }
                 }
@@ -241,7 +236,12 @@ class AdminViewModel : ViewModel() {
                 val rows = mutableListOf<UserFormationRow>()
                 for (u in _users.value) {
                     if (u.isAdmin) continue
-                    val qbIds = repository.getUserFormationIds(u.uid, week)
+
+                    // --- NUOVO ---
+                    val formation = repository.getFormation(u.uid, week)
+                    val qbIds = formation?.qbIds ?: emptyList()
+                    // -------------
+
                     var total = 0.0
                     qbIds.forEach { qid ->
                         val scores = statsMap[qid]

@@ -55,68 +55,43 @@ class RankingViewModel : ViewModel() {
             _loading.value = true
             _error.value = null
             try {
-                // 1. Prendi tutti gli utenti
                 val users = repository.getAllUsers()
                 val entries = mutableListOf<RankingEntry>()
-
-                // 2. Cache dei Game ID per ogni Week (Week -> Lista ID Partite)
-                val gamesCache = mutableMapOf<Int, List<String>>()
-
-                // 3. Scarichiamo TUTTE le weekstats una volta sola (Ottimizzazione)
-                // Ora otteniamo oggetti WeekStats puliti, non documenti grezzi!
                 val allWeekStats = repository.getAllWeekStats()
+
+                // Cache ID partite per week
+                val gamesCache = mutableMapOf<Int, List<String>>()
 
                 for (u in users) {
                     if (u.isAdmin) continue
 
-                    // Prendi formazioni raw (qui manteniamo raw perché non abbiamo creato un Model Formation)
+                    // --- QUI USIAMO IL NUOVO MODEL ---
+                    // Restituisce List<Formation> pulita
                     val formations = repository.getUserFormations(u.uid)
                     var totalForUser = 0.0
 
-                    for (f in formations) {
-                        // A) Tentativo lettura diretta totale salvato nella formazione
-                        val possibleKeys = listOf("punteggioQbs", "punteggioQb", "totalWeekScore", "totalScore", "punteggio")
-                        var valueFound: Double? = null
-
-                        for (k in possibleKeys) {
-                            val raw = f.get(k)
-                            val num = when (raw) {
-                                is Number -> raw.toDouble()
-                                is String -> raw.toDoubleOrNull()
-                                else -> null
-                            }
-                            if (num != null) { valueFound = num; break }
-                        }
-
-                        // B) Se non c'è il totale salvato, lo ricalcoliamo usando WeekStats
-                        if (valueFound == null) {
-                            val weekNum = (f.getLong("weekNumber") ?: f.getLong("week") ?: 0L).toInt()
-                            val qbIds = (f.get("qbIds") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
-
-                            if (qbIds.isNotEmpty()) {
-                                // Recupera ID partite per quella week
+                    for (formation in formations) {
+                        // 1. Se abbiamo già il totale salvato, usalo (il Mapper lo ha già trovato)
+                        if (formation.totalScore != null) {
+                            totalForUser += formation.totalScore
+                        } else {
+                            // 2. Altrimenti calcola al volo usando WeekStats
+                            if (formation.qbIds.isNotEmpty()) {
+                                val weekNum = formation.weekNumber
                                 val gameIds = gamesCache.getOrPut(weekNum) {
                                     repository.getGamesForWeek(weekNum).map { it.id }
                                 }
 
                                 var sum = 0.0
-                                for (qbId in qbIds) {
-                                    // FILTRAGGIO PULITO: Usiamo gli oggetti, non le stringhe map
-                                    // Cerchiamo nelle statistiche scaricate quella che:
-                                    // 1. Appartiene a questo QB
-                                    // 2. Appartiene a una delle partite di questa settimana
+                                for (qbId in formation.qbIds) {
                                     val stat = allWeekStats.find {
                                         it.qbId == qbId && gameIds.contains(it.gameId)
                                     }
-
-                                    if (stat != null) {
-                                        sum += stat.punteggio
-                                    }
+                                    if (stat != null) sum += stat.punteggio
                                 }
-                                valueFound = sum
+                                totalForUser += sum
                             }
                         }
-                        totalForUser += (valueFound ?: 0.0)
                     }
                     entries.add(RankingEntry(u.uid, u.username, u.nomeTeam, totalForUser))
                 }
@@ -136,12 +111,12 @@ class RankingViewModel : ViewModel() {
             _selectedUserLoading.value = true
             _selectedUserDetail.value = null
             try {
+                // Anche qui usiamo List<Formation>
                 val formations = repository.getUserFormations(uid)
                 val counts = mutableMapOf<String, Int>()
 
                 for (f in formations) {
-                    val qbIds = (f.get("qbIds") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
-                    qbIds.forEach { id -> counts[id] = (counts[id] ?: 0) + 1 }
+                    f.qbIds.forEach { id -> counts[id] = (counts[id] ?: 0) + 1 }
                 }
 
                 if (counts.isEmpty()) {
@@ -154,8 +129,7 @@ class RankingViewModel : ViewModel() {
 
                 val favName = if (maxCount > 0 && topQbs.size == 1) {
                     val qbId = topQbs.first()
-                    val qb = repository.getQB(qbId)
-                    qb?.nome ?: qbId
+                    repository.getQB(qbId)?.nome ?: qbId
                 } else null
 
                 _selectedUserDetail.value = UserDetail(uid, username, nomeTeam, favName)

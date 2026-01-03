@@ -136,31 +136,29 @@ class TeamViewModel : ViewModel() {
             _loading.value = true
             _error.value = null
             try {
-                val uid = auth.currentUser?.uid ?: run {
-                    _error.value = "Utente non autenticato"
-                    _loading.value = false
-                    return@launch
-                }
+                val uid = auth.currentUser?.uid ?: run { /* ... */ return@launch }
 
                 loadGamesForWeek(week)
                 observeWeekCalculated(week)
 
-                val isLocked = repository.isFormationLocked(uid, week)
-                _formationLocked.value = isLocked
+                // --- NUOVO METODO PULITO ---
+                val formation = repository.getFormation(uid, week)
 
-                val qbIds = repository.getUserFormationIds(uid, week)
+                if (formation != null) {
+                    _formationLocked.value = formation.locked
 
-                if (qbIds.isNotEmpty()) {
-                    val qbList = qbIds.mapNotNull { id -> repository.getQB(id) }
+                    val qbList = formation.qbIds.mapNotNull { id -> repository.getQB(id) }
                     _formationQBs.value = qbList
                     loadScoresForFormation(qbList, week)
                 } else {
+                    _formationLocked.value = false
                     _formationQBs.value = emptyList()
                     _formationScores.value = emptyList()
                 }
+                // ---------------------------
 
             } catch (e: Exception) {
-                Log.e("TeamVM", "loadUserFormationForWeek: ${e.message}", e)
+                Log.e("TeamVM", "Error: ${e.message}", e)
                 _error.value = e.message
             } finally {
                 _loading.value = false

@@ -22,27 +22,25 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
     val loading by vm.loading.collectAsState()
     val error by vm.error.collectAsState()
     val success by vm.success.collectAsState()
+
+    // Osserviamo lo stato che richiede la password
     val askPassword by vm.askPassword.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
     var showEditUsername by remember { mutableStateOf(false) }
     var showConfirmDelete by remember { mutableStateOf(false) }
 
-    // show messages
     LaunchedEffect(error) {
         if (!error.isNullOrBlank()) {
-            scope.launch {
-                snackbarHostState.showSnackbar(error!!)
-            }
+            scope.launch { snackbarHostState.showSnackbar(error!!) }
             vm.clearMessages()
         }
     }
     LaunchedEffect(success) {
         if (!success.isNullOrBlank()) {
-            scope.launch {
-                snackbarHostState.showSnackbar(success!!)
-            }
+            scope.launch { snackbarHostState.showSnackbar(success!!) }
             if (success!!.contains("eliminato", ignoreCase = true)) {
                 onLogout()
             }
@@ -73,7 +71,7 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
                     Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Profilo", style = MaterialTheme.typography.titleMedium)
 
-                        // Email row (read-only) — rimosso IconButton di modifica email
+                        // Email (Sola lettura per semplicità, o modificabile se vuoi ripristinarlo)
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Email", style = MaterialTheme.typography.bodySmall)
@@ -81,10 +79,9 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
                                     Text(email ?: "", modifier = Modifier.padding(12.dp))
                                 }
                             }
-                            // ICONBUTTON RIMOSSO: non si può più modificare l'email dall'app
                         }
 
-                        // Username row (modificabile)
+                        // Username
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Username", style = MaterialTheme.typography.bodySmall)
@@ -97,12 +94,8 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
                             }
                         }
 
-                        // Logout button
                         Button(
-                            onClick = {
-                                vm.logout()
-                                onLogout()
-                            },
+                            onClick = { vm.logout(); onLogout() },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("Logout")
@@ -110,7 +103,7 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
                     }
                 }
 
-                // Delete account big button (danger)
+                // Bottone Elimina Account
                 Button(
                     onClick = { showConfirmDelete = true },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
@@ -122,14 +115,13 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
                 Spacer(modifier = Modifier.weight(1f))
             }
 
-            // Loading overlay
             if (loading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
             }
 
-            // Edit Username dialog
+            // Dialog Modifica Username
             if (showEditUsername) {
                 var newUsername by remember { mutableStateOf(username ?: "") }
                 AlertDialog(
@@ -152,12 +144,12 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
                 )
             }
 
-            // Confirm delete dialog
+            // Dialog Conferma Eliminazione
             if (showConfirmDelete) {
                 AlertDialog(
                     onDismissRequest = { showConfirmDelete = false },
                     title = { Text("Conferma eliminazione") },
-                    text = { Text("Sei sicuro di voler eliminare il tuo account?") },
+                    text = { Text("Sei sicuro? L'operazione è irreversibile.") },
                     confirmButton = {
                         TextButton(onClick = {
                             showConfirmDelete = false
@@ -166,6 +158,43 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
                     },
                     dismissButton = {
                         TextButton(onClick = { showConfirmDelete = false }) { Text("Annulla") }
+                    }
+                )
+            }
+
+            // --- DIALOG RICHIESTA PASSWORD (NECESSARIO PER ELIMINARE) ---
+            if (askPassword) {
+                var pwd by remember { mutableStateOf("") }
+                AlertDialog(
+                    onDismissRequest = { /* Obbligatorio interagire */ },
+                    title = { Text("Conferma Password") },
+                    text = {
+                        Column {
+                            Text("Per sicurezza, inserisci la tua password per confermare l'eliminazione.")
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = pwd,
+                                onValueChange = { pwd = it },
+                                singleLine = true,
+                                label = { Text("Password") },
+                                // Per nascondere la password visivamente
+                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            // Chiama la funzione di re-auth del ViewModel
+                            vm.reauthenticateWithPassword(pwd)
+                        }) { Text("Conferma") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = {
+                            vm.clearMessages() // Questo resetta anche askPassword se implementato o bisogna aggiungere un metodo nel VM
+                            // Per semplicità nel VM attuale non c'è un metodo "cancelReauth",
+                            // ma possiamo ricaricare i dati che resetta lo stato.
+                            vm.loadUserData()
+                        }) { Text("Annulla") }
                     }
                 )
             }

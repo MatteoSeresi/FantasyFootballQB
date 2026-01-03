@@ -19,7 +19,6 @@ data class QBWithScore(
 
 class TeamViewModel : ViewModel() {
 
-    // Inizializziamo il Repository (in un'app più grande useremmo Hilt/Koin per iniettarlo)
     private val repository = FireStoreRepository()
     private val auth = FirebaseAuth.getInstance()
 
@@ -65,7 +64,6 @@ class TeamViewModel : ViewModel() {
 
     private fun observeQBs() {
         viewModelScope.launch {
-            // repository.observeQBs() ci restituisce già oggetti QB mappati
             repository.observeQBs().collect { qbs ->
                 _availableQBs.value = qbs.filter { it.stato.equals("Titolare", ignoreCase = true) }
             }
@@ -84,12 +82,9 @@ class TeamViewModel : ViewModel() {
     fun loadAvailableWeeks() {
         viewModelScope.launch {
             try {
-                // Scarichiamo tutte le partite per estrarre le week
                 val games = repository.getAllGames()
                 val weeks = games.map { it.weekNumber }.distinct().sorted()
                 _availableWeeks.value = weeks
-
-                // Aggiorniamo anche la firstUncalculatedWeek per sicurezza
                 calculateFirstUncalculatedInternal(games)
             } catch (e: Exception) {
                 Log.e("TeamVM", "loadAvailableWeeks: ${e.message}", e)
@@ -110,7 +105,6 @@ class TeamViewModel : ViewModel() {
         }
     }
 
-    // Logica helper per trovare la prima week non calcolata (in memoria)
     private fun calculateFirstUncalculatedInternal(games: List<Game>) {
         val firstUncalc = games
             .filter { !it.partitaCalcolata }
@@ -148,23 +142,17 @@ class TeamViewModel : ViewModel() {
                     return@launch
                 }
 
-                // Carica giochi e osserva stato week
                 loadGamesForWeek(week)
                 observeWeekCalculated(week)
 
-                // 1. Controlla se è locked
                 val isLocked = repository.isFormationLocked(uid, week)
                 _formationLocked.value = isLocked
 
-                // 2. Recupera gli ID dei QB
                 val qbIds = repository.getUserFormationIds(uid, week)
 
                 if (qbIds.isNotEmpty()) {
-                    // 3. Recupera gli oggetti QB completi usando il nuovo metodo del Repo
                     val qbList = qbIds.mapNotNull { id -> repository.getQB(id) }
                     _formationQBs.value = qbList
-
-                    // 4. Carica i punteggi
                     loadScoresForFormation(qbList, week)
                 } else {
                     _formationQBs.value = emptyList()
@@ -196,10 +184,7 @@ class TeamViewModel : ViewModel() {
                 }
 
                 repository.submitFormation(uid, week, qbIds)
-
-                // Ricarica la formazione
                 loadUserFormationForWeek(week)
-                // Ricalcola le week disponibili/calcolate
                 loadFirstUncalculatedWeek()
 
             } catch (e: Exception) {
@@ -215,14 +200,12 @@ class TeamViewModel : ViewModel() {
         viewModelScope.launch {
             _loading.value = true
             try {
-                // Recupera le partite se non ci sono
                 val games = if (_gamesForWeek.value.isNotEmpty() && _gamesForWeek.value.first().weekNumber == week) {
                     _gamesForWeek.value
                 } else {
                     repository.getGamesForWeek(week)
                 }
 
-                // Mappa team -> opponent
                 val teamToOpponent = mutableMapOf<String, String>()
                 for (g in games) {
                     teamToOpponent[g.squadraCasa] = g.squadraOspite
@@ -231,27 +214,18 @@ class TeamViewModel : ViewModel() {
 
                 val results = mutableListOf<QBWithScore>()
                 for (qb in qbs) {
-                    // Ottieni i documenti raw dei punteggi per questo QB dal Repo
-                    val wsDocs = repository.getWeekStatsForQb(qb.id)
+                    // QUI LA MAGIA: Usiamo la nuova funzione pulita getQBWeekStats
+                    // che restituisce una lista di oggetti WeekStats, non Documenti raw.
+                    val stats = repository.getQBWeekStats(qb.id)
 
-                    var foundScore: Double? = null
-
-                    // Cerca il documento che corrisponde a una delle partite di questa week
-                    for (doc in wsDocs) {
-                        val gameId = doc.getString("game_id") ?: doc.getString("gameId")
-                        if (gameId != null && games.any { it.id == gameId }) {
-                            // Trovato! Applichiamo la tua logica di parsing specifica
-                            val raw = doc.get("punteggioQB") ?: doc.get("punteggio_qb") ?: doc.get("punteggio")
-                            foundScore = when (raw) {
-                                is Number -> raw.toDouble()
-                                is String -> raw.toDoubleOrNull()
-                                else -> null
-                            }
-                            break
-                        }
+                    // Cerchiamo l'oggetto WeekStats che corrisponde a una delle partite di questa week
+                    val matchStat = stats.find { stat ->
+                        games.any { game -> game.id == stat.gameId }
                     }
+
                     val opponent = teamToOpponent[qb.squadra]
-                    results.add(QBWithScore(qb = qb, score = foundScore, opponentTeam = opponent))
+                    // Se matchStat esiste prendiamo il punteggio, altrimenti null
+                    results.add(QBWithScore(qb = qb, score = matchStat?.punteggio, opponentTeam = opponent))
                 }
                 _formationScores.value = results
             } catch (e: Exception) {

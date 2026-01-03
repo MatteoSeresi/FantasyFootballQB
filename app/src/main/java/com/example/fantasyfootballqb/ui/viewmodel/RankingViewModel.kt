@@ -55,22 +55,26 @@ class RankingViewModel : ViewModel() {
             _loading.value = true
             _error.value = null
             try {
-                // 1. Prendi tutti gli utenti dal repo
+                // 1. Prendi tutti gli utenti
                 val users = repository.getAllUsers()
                 val entries = mutableListOf<RankingEntry>()
 
-                // Cache games (week -> list gameIds) per ottimizzare fallback
+                // 2. Cache dei Game ID per ogni Week (Week -> Lista ID Partite)
                 val gamesCache = mutableMapOf<Int, List<String>>()
+
+                // 3. Scarichiamo TUTTE le weekstats una volta sola (Ottimizzazione)
+                // Ora otteniamo oggetti WeekStats puliti, non documenti grezzi!
+                val allWeekStats = repository.getAllWeekStats()
 
                 for (u in users) {
                     if (u.isAdmin) continue
 
-                    // 2. Prendi formazioni raw per l'utente (per parsing custom)
+                    // Prendi formazioni raw (qui manteniamo raw perché non abbiamo creato un Model Formation)
                     val formations = repository.getUserFormations(u.uid)
                     var totalForUser = 0.0
 
                     for (f in formations) {
-                        // A) Tentativo lettura diretta campo totale
+                        // A) Tentativo lettura diretta totale salvato nella formazione
                         val possibleKeys = listOf("punteggioQbs", "punteggioQb", "totalWeekScore", "totalScore", "punteggio")
                         var valueFound: Double? = null
 
@@ -84,41 +88,29 @@ class RankingViewModel : ViewModel() {
                             if (num != null) { valueFound = num; break }
                         }
 
-                        // B) Tentativo somma mappa 'punteggi'
-                        if (valueFound == null) {
-                            val mapObj = f.get("punteggi")
-                            if (mapObj is Map<*, *>) {
-                                var sum = 0.0
-                                mapObj.forEach { (_, v) ->
-                                    val n = when (v) { is Number -> v.toDouble(); is String -> v.toDoubleOrNull(); else -> null }
-                                    if (n != null) sum += n
-                                }
-                                valueFound = sum
-                            }
-                        }
-
-                        // C) Fallback calcolo da weekstats (Lento ma robusto)
+                        // B) Se non c'è il totale salvato, lo ricalcoliamo usando WeekStats
                         if (valueFound == null) {
                             val weekNum = (f.getLong("weekNumber") ?: f.getLong("week") ?: 0L).toInt()
                             val qbIds = (f.get("qbIds") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
 
                             if (qbIds.isNotEmpty()) {
-                                // Cache gameIDs della week se serve
+                                // Recupera ID partite per quella week
                                 val gameIds = gamesCache.getOrPut(weekNum) {
                                     repository.getGamesForWeek(weekNum).map { it.id }
                                 }
 
                                 var sum = 0.0
                                 for (qbId in qbIds) {
-                                    // Fetch stats raw per QB
-                                    val qbStats = repository.getWeekStatsForQb(qbId)
-                                    for (doc in qbStats) {
-                                        val gid = doc.getString("game_id") ?: doc.getString("gameId")
-                                        if (gid != null && gameIds.contains(gid)) {
-                                            val raw = doc.get("punteggioQB") ?: doc.get("score") // ecc...
-                                            val vn = when(raw) { is Number -> raw.toDouble(); is String -> raw.toDoubleOrNull(); else -> null }
-                                            if (vn != null) { sum += vn; break }
-                                        }
+                                    // FILTRAGGIO PULITO: Usiamo gli oggetti, non le stringhe map
+                                    // Cerchiamo nelle statistiche scaricate quella che:
+                                    // 1. Appartiene a questo QB
+                                    // 2. Appartiene a una delle partite di questa settimana
+                                    val stat = allWeekStats.find {
+                                        it.qbId == qbId && gameIds.contains(it.gameId)
+                                    }
+
+                                    if (stat != null) {
+                                        sum += stat.punteggio
                                     }
                                 }
                                 valueFound = sum

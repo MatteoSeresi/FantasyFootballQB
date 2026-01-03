@@ -3,6 +3,7 @@ package com.example.fantasyfootballqb.repository
 import com.example.fantasyfootballqb.models.Game
 import com.example.fantasyfootballqb.models.QB
 import com.example.fantasyfootballqb.models.User
+import com.example.fantasyfootballqb.models.WeekStats
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
@@ -167,16 +168,13 @@ class FireStoreRepository {
             .await()
     }
 
-    // --- FUNZIONI WEEKSTATS & SCORE (Raw Fetching) ---
-    // Manteniamo la logica flessibile: ti restituisce i documenti raw,
-    // così il ViewModel può applicare la logica specifica sui nomi dei campi.
-
-    suspend fun getWeekStatsForQb(qbId: String): List<com.google.firebase.firestore.DocumentSnapshot> {
-        return db.collection("weekstats")
+    // --- FUNZIONI WEEKSTATS & SCORE
+    suspend fun getQBWeekStats(qbId: String): List<com.example.fantasyfootballqb.models.WeekStats> {
+        val snapshot = db.collection("weekstats")
             .whereEqualTo("qb_id", qbId)
             .get()
             .await()
-            .documents
+        return snapshot.documents.mapNotNull { it.toWeekStats() }
     }
 
     // --- ADMIN FUNCTIONS ---
@@ -230,13 +228,18 @@ class FireStoreRepository {
     }
 
     // Ottieni tutte le weekstats (utile per calcoli massivi o validazione)
-    suspend fun getAllWeekStats(): List<com.google.firebase.firestore.DocumentSnapshot> {
-        return db.collection("weekstats").get().await().documents
+    suspend fun getAllWeekStats(): List<com.example.fantasyfootballqb.models.WeekStats> {
+        val snapshot = db.collection("weekstats").get().await()
+        return snapshot.documents.mapNotNull { it.toWeekStats() }
     }
 
     // Ottieni weekstats per una specifica partita (per validazione puntuale)
-    suspend fun getWeekStatsForGame(gameId: String): List<com.google.firebase.firestore.DocumentSnapshot> {
-        return db.collection("weekstats").whereEqualTo("game_id", gameId).get().await().documents
+    suspend fun getWeekStatsForGame(gameId: String): List<com.example.fantasyfootballqb.models.WeekStats> {
+        val snapshot = db.collection("weekstats")
+            .whereEqualTo("game_id", gameId) // Nota: qui assume che nel DB il campo principale sia game_id
+            .get()
+            .await()
+        return snapshot.documents.mapNotNull { it.toWeekStats() }
     }
 
     // Calcola Week (segna tutte le partite della week come calcolate)

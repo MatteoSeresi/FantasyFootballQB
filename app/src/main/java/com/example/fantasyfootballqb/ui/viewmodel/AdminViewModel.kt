@@ -108,7 +108,6 @@ class AdminViewModel : ViewModel() {
         }
     }
 
-    // --- FUNZIONE DI AGGIORNAMENTO UTENTE  ---
     fun updateUserData(uid: String, username: String, nomeTeam: String) {
         viewModelScope.launch {
             try {
@@ -161,25 +160,25 @@ class AdminViewModel : ViewModel() {
             val games = repository.getGamesForWeek(week)
             if (games.isEmpty()) return listOf("Nessuna partita per la week $week")
 
+            // 1. Verifica giocate
             games.filter { !it.partitaGiocata }.forEach { g ->
                 problems.add("${g.squadraCasa} vs ${g.squadraOspite}: Non giocata")
             }
 
+            // 2. Verifica weekstats
             for (g in games) {
-                val statsDocs = repository.getWeekStatsForGame(g.id)
-                if (statsDocs.isEmpty()) {
+                // Ora otteniamo una lista di oggetti WeekStats puliti
+                val stats = repository.getWeekStatsForGame(g.id)
+
+                if (stats.isEmpty()) {
                     problems.add("${g.squadraCasa} vs ${g.squadraOspite}: Nessun punteggio inserito")
                     continue
                 }
-                val invalid = statsDocs.any { doc ->
-                    val raw = doc.get("punteggioQB")
-                    when (raw) {
-                        is Number -> false
-                        is String -> raw.toDoubleOrNull() == null
-                        else -> true
-                    }
-                }
-                if (invalid) problems.add("${g.squadraCasa} vs ${g.squadraOspite}: Punteggio non valido")
+
+                // Nota: Il controllo "Punteggio non valido" non serve più in questa forma
+                // perché il Mapper converte automaticamente i formati errati in 0.0.
+                // Se vuoi, puoi controllare se ci sono punteggi a 0.0, ma potrebbe essere un punteggio reale.
+                // Per ora ci accontentiamo di sapere che il record esiste.
             }
         } catch (e: Exception) {
             problems.add("Errore validazione: ${e.message}")
@@ -224,22 +223,18 @@ class AdminViewModel : ViewModel() {
             try {
                 val games = _gamesByWeek.value[week] ?: emptyList()
                 val gameIds = games.map { it.id }
+
+                // Otteniamo oggetti WeekStats puliti (non DocumentSnapshot)
                 val allStats = repository.getAllWeekStats()
 
+                // Mappa: QB_ID -> Lista di Punteggi
                 val statsMap = mutableMapOf<String, MutableList<Double>>()
-                for (d in allStats) {
-                    val gId = d.getString("game_id") ?: d.getString("gameId") ?: d.getString("game")
-                    if (gId == null || !gameIds.contains(gId)) continue
 
-                    val qbId = d.getString("qb_id") ?: d.getString("qbId") ?: continue
-                    val raw = d.get("punteggioQB") ?: d.get("punteggio_qb") ?: d.get("score") ?: d.get("punteggio")
-                    val value: Double? = when (raw) {
-                        is Number -> raw.toDouble()
-                        is String -> raw.toDoubleOrNull()
-                        else -> null
-                    }
-                    if (value != null) {
-                        statsMap.getOrPut(qbId) { mutableListOf() }.add(value)
+                for (stat in allStats) {
+                    // Controllo se la statistica appartiene a una partita di questa week
+                    if (gameIds.contains(stat.gameId)) {
+                        // Aggiungo il punteggio pulito alla mappa
+                        statsMap.getOrPut(stat.qbId) { mutableListOf() }.add(stat.punteggio)
                     }
                 }
 

@@ -1,10 +1,12 @@
 package com.example.fantasyfootballqb.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
@@ -12,14 +14,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.fantasyfootballqb.models.Game
 import com.example.fantasyfootballqb.ui.viewmodel.CalendarViewModel
+// Importante: Importiamo la classe QBStat definita nel ViewModel
+import com.example.fantasyfootballqb.ui.viewmodel.QBStat
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.ui.text.style.TextAlign
 
 @Composable
 fun CalendarScreen(calendarViewModel: CalendarViewModel = viewModel()) {
@@ -33,7 +35,7 @@ fun CalendarScreen(calendarViewModel: CalendarViewModel = viewModel()) {
     // dialog state (rimane sulla stessa schermata)
     var showStatsDialog by remember { mutableStateOf(false) }
     var currentGameForDialog by remember { mutableStateOf<Game?>(null) }
-    var currentStats by remember { mutableStateOf<List<com.example.fantasyfootballqb.ui.viewmodel.QBStat>?>(null) }
+    var currentStats by remember { mutableStateOf<List<QBStat>?>(null) }
     var dialogLoading by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
@@ -155,7 +157,7 @@ fun CalendarScreen(calendarViewModel: CalendarViewModel = viewModel()) {
                                 }
                             } else {
                                 if (currentStats == null || currentStats!!.isEmpty()) {
-                                    Text("Punteggii dei giocatori non ancora inseriti")
+                                    Text("Punteggi dei giocatori non ancora inseriti")
                                 } else {
                                     val grouped = currentStats!!.groupBy { it.qb.squadra }
                                     grouped.forEach { (team, list) ->

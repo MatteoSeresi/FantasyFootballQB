@@ -212,7 +212,7 @@ class TeamViewModel : ViewModel() {
 
                 val results = mutableListOf<QBWithScore>()
                 for (qb in qbs) {
-                    // QUI LA MAGIA: Usiamo la nuova funzione pulita getQBWeekStats
+                    // Usiamo la nuova funzione pulita getQBWeekStats
                     // che restituisce una lista di oggetti WeekStats, non Documenti raw.
                     val stats = repository.getQBWeekStats(qb.id)
 

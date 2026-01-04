@@ -27,7 +27,6 @@ fun LoginScreen(
     onLoginNavigate: (isAdmin: Boolean) -> Unit,
     onRegister: () -> Unit
 ) {
-    // Firebase instances (usate solo al click del bottone)
     val auth = FirebaseAuth.getInstance()
     val db = FirebaseFirestore.getInstance()
 
@@ -54,7 +53,6 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Titolo
                 Text(text = "Accedi", style = MaterialTheme.typography.titleLarge)
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -97,7 +95,6 @@ fun LoginScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Button(onClick = {
-                    // login flow
                     scope.launch {
                         try {
                             loading = true
@@ -108,7 +105,7 @@ fun LoginScreen(
                                 loading = false
                                 return@launch
                             }
-                            // leggi doc users/{uid}
+
                             val uid = user.uid
                             val doc = db.collection("users").document(uid).get().await()
                             val isAdmin = doc.exists() && (doc.getBoolean("isAdmin") == true)

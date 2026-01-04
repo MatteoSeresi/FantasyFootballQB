@@ -31,19 +31,14 @@ fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {
     val fallbackEmail = firebaseAuth.currentUser?.email ?: ""
 
     var teamInput by remember { mutableStateOf("") }
-
-    // dialog di modifica
     var showEditDialog by remember { mutableStateOf(false) }
 
-    // se l'user ha nomeTeam preimpostalo nell'input (utile se vuole modificarlo)
     LaunchedEffect(user?.nomeTeam) {
         teamInput = user?.nomeTeam ?: ""
     }
 
-    // Snackbar host
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // show snackbar ad eventi di successo/errore
     LaunchedEffect(error) {
         error?.let {
             snackbarHostState.showSnackbar(it)
@@ -91,7 +86,6 @@ fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Username (read-only). Se manca, mostra stringa vuota
                     OutlinedTextField(
                         value = user?.username ?: "",
                         onValueChange = { /* read-only */ },
@@ -133,9 +127,6 @@ fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {
                                 if (teamInput.isNotBlank()) {
                                     homeViewModel.createOrUpdateTeam(teamInput.trim())
                                 } else {
-                                    // mostra snackbar di errore locale
-                                    // usiamo il snackbarHostState direttamente:
-                                    // (non modifichiamo il ViewModel per questo semplice messaggio)
                                 }
                             },
                             modifier = Modifier.align(Alignment.End),
@@ -197,11 +188,10 @@ fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {
                     Text(text = "Regolamento:", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // area testuale scrollabile con altezza massima
                     val scrollState = rememberScrollState()
                     Column(
                         modifier = Modifier
-                            .heightIn(max = 220.dp)    // regola questo valore a piacere
+                            .heightIn(max = 220.dp)
                             .verticalScroll(scrollState)
                     ) {
                         Text(

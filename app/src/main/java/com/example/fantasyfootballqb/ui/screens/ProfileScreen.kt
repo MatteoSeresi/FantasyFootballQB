@@ -23,7 +23,6 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
     val error by vm.error.collectAsState()
     val success by vm.success.collectAsState()
 
-    // Osserviamo lo stato che richiede la password
     val askPassword by vm.askPassword.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -71,7 +70,7 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
                     Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Profilo", style = MaterialTheme.typography.titleMedium)
 
-                        // Email (Sola lettura per semplicità, o modificabile se vuoi ripristinarlo)
+                        // Email (Sola lettura per semplicità)
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Email", style = MaterialTheme.typography.bodySmall)
@@ -177,22 +176,18 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
                                 onValueChange = { pwd = it },
                                 singleLine = true,
                                 label = { Text("Password") },
-                                // Per nascondere la password visivamente
                                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
                             )
                         }
                     },
                     confirmButton = {
                         TextButton(onClick = {
-                            // Chiama la funzione di re-auth del ViewModel
                             vm.reauthenticateWithPassword(pwd)
                         }) { Text("Conferma") }
                     },
                     dismissButton = {
                         TextButton(onClick = {
-                            vm.clearMessages() // Questo resetta anche askPassword se implementato o bisogna aggiungere un metodo nel VM
-                            // Per semplicità nel VM attuale non c'è un metodo "cancelReauth",
-                            // ma possiamo ricaricare i dati che resetta lo stato.
+                            vm.clearMessages()
                             vm.loadUserData()
                         }) { Text("Annulla") }
                     }

@@ -26,7 +26,6 @@ fun RankingScreen(vm: RankingViewModel = viewModel()) {
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // detail dialog state from VM
     val selectedUserDetail by vm.selectedUserDetail.collectAsState()
     val selectedUserLoading by vm.selectedUserLoading.collectAsState()
     val selectedUserError by vm.selectedUserError.collectAsState()
@@ -45,14 +44,12 @@ fun RankingScreen(vm: RankingViewModel = viewModel()) {
             .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f))
         ) {
             Column(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                // header card
                 Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                     Box(modifier = Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.CenterStart) {
                         Text("Classifica", fontWeight = FontWeight.Bold)
                     }
                 }
 
-                // table header
                 Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                     Row(modifier = Modifier
                         .fillMaxWidth()
@@ -82,7 +79,6 @@ fun RankingScreen(vm: RankingViewModel = viewModel()) {
                                 Card(modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        // carica dettaglio utente (favorite)
                                         vm.clearSelectedUserDetail()
                                         vm.loadUserDetail(entry.uid, entry.username, entry.nomeTeam)
                                     },

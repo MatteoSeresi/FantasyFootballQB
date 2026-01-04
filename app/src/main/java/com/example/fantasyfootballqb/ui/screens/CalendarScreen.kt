@@ -19,7 +19,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.fantasyfootballqb.models.Game
 import com.example.fantasyfootballqb.ui.viewmodel.CalendarViewModel
-// Importante: Importiamo la classe QBStat definita nel ViewModel
 import com.example.fantasyfootballqb.ui.viewmodel.QBStat
 import kotlinx.coroutines.launch
 

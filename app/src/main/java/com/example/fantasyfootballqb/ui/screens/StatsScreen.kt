@@ -39,17 +39,13 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
     val selectedTeams by vm.selectedTeams.collectAsState()
     val searchQuery by vm.searchQuery.collectAsState()
 
-    // bottom sheet visibility
     var showFilterSheet by remember { mutableStateOf(false) }
 
-    // sheet state
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val coroutineScope = rememberCoroutineScope()
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f))) {
         Column(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-
-            // Top card: titolo + open filter button
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -73,7 +69,6 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                 }
             }
 
-            // Table card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
@@ -114,8 +109,6 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                             }
                         }
                     } else {
-                        // Default: Giocatore | Team | GP | PTOT | PPG
-                        // NOTE: Team column shrunk (0.12) and PPG enlarged (0.13) to avoid wrap on decimals.
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

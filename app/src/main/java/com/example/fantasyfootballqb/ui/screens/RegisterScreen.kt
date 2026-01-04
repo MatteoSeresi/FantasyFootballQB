@@ -141,11 +141,6 @@ fun RegisterScreen(
             Button(
                 onClick = {
                     if (password != confirmPassword) {
-                        // segnala errore locale
-                        // possiamo provocare lo stato di errore direttamente (semplice)
-                        // ma preferisco usare un Toast / snackbar: qui imposto lo stato errore nel ViewModel
-                        // per semplicità: mostriamo un Alert dialog inline:
-                        // (qui, però, invoco register solo se ok)
                         return@Button
                     }
                     authViewModel.register(email, password, username)

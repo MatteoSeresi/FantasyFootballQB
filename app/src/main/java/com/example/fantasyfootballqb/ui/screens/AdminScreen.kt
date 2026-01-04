@@ -71,7 +71,6 @@ fun AdminScreen(
         selectedWeek?.let { vm.observeWeekCalculated(it) }
     }
 
-    // Usando topBar dello Scaffold la AppTopBar non subirà il padding laterale
     Scaffold(
         topBar = {
             AppTopBar(
@@ -271,10 +270,9 @@ fun AdminScreen(
     }
 }
 
-/* ---------------- Dialogs used above ---------------- */
 
 /**
- * UsersDialog: come prima, mostra lista utenti e permette modifica.
+ * UsersDialog: mostra lista utenti e permette modifica.
  */
 @Composable
 private fun UsersDialog(users: List<AdminUser>, onDismiss: () -> Unit, onSave: (AdminUser, String, String) -> Unit) {
@@ -328,10 +326,7 @@ private fun UsersDialog(users: List<AdminUser>, onDismiss: () -> Unit, onSave: (
 /**
  * ModifyGamesDialog: modifica risultato -> imposta partitaGiocata true se risultato non vuoto
  */
-/**
- * ModifyGamesDialog: ora richiede che il risultato sia nel formato "num - num" (1-2 cifre per squadra).
- * Se il risultato è vuoto, salva partitaGiocata = false, risultato = null.
- */
+
 @Composable
 private fun ModifyGamesDialog(
     week: Int?,
@@ -342,7 +337,6 @@ private fun ModifyGamesDialog(
     var localGames by remember { mutableStateOf(games.map { it.copy() }) }
     LaunchedEffect(games) { localGames = games.map { it.copy() } }
 
-    // regex: 1-2 cifre, eventuali spazi, trattino, eventuali spazi, 1-2 cifre
     val resultRegex = remember { Regex("""^\s*\d{1,2}\s*-\s*\d{1,2}\s*$""") }
 
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Modifica dati partite - Week ${week ?: "-"}") }, text = {
@@ -377,9 +371,6 @@ private fun ModifyGamesDialog(
                             }
                             Spacer(modifier = Modifier.height(6.dp))
                             val gameIndex = localGames.indexOfFirst { it.id == g.id }
-                            // recuperiamo localResult e localError in modo ripetuto: usiamo rememberAlloca sopra per la singola riga,
-                            // ma qui per semplicità mostriamo eventuale errore (l'errore è gestito nel bottone Salva).
-                            // Mostriamo comunque un hint sul formato:
                             Text("Formato richiesto: \"x - x\"",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -399,11 +390,6 @@ private fun ModifyGamesDialog(
                                                 // formato OK: salva
                                                 onSaveGame(gs.id, true, txt)
                                             } else {
-                                                // formato non valido: mostriamo snackbar/errore
-                                                // Non possiamo accedere direttamente a localError definito nella riga in modo persistente qui,
-                                                // quindi usiamo uno snackbar per feedback rapido
-                                                // Tuttavia, per un errore persistente sarebbe meglio mantenere una map id->error nello stato del parent dialog.
-                                                // Per semplicità qui mostriamo un snackbar:
                                             }
                                         }
                                     }

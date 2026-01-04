@@ -35,10 +35,8 @@ fun TeamScreen(
     val gamesForWeek by vm.gamesForWeek.collectAsState()
     val availableWeeks by vm.availableWeeks.collectAsState()
 
-    // --- FIX STEP 0: Usiamo lo stato del ViewModel ---
     val firstUncalculatedWeek by vm.firstUncalculatedWeek.collectAsState()
 
-    // selectedWeek: inizialmente weekDefault, poi sincronizziamo con availableWeeks se presenti
     var selectedWeek by remember { mutableStateOf(weekDefault) }
 
     // selected slots: 3 nullable
@@ -61,14 +59,14 @@ fun TeamScreen(
         }
     }
 
-    // quando l'utente cambia la selectedWeek ricarichiamo formation e giochi e osserviamo il flag weekCalculated
+    // quando l'utente cambia la selectedWeek ricarichiamo formation e osserviamo il flag weekCalculated
     LaunchedEffect(selectedWeek) {
         vm.loadUserFormationForWeek(selectedWeek)
         vm.loadGamesForWeek(selectedWeek)
         vm.observeWeekCalculated(selectedWeek)
     }
 
-    // when formation changes populate slots for display (not for deciding final)
+    // when formation changes populate slots for display
     LaunchedEffect(formationQBs) {
         if (formationQBs.isNotEmpty()) {
             selectedSlots = formationQBs.toMutableList().let { list ->

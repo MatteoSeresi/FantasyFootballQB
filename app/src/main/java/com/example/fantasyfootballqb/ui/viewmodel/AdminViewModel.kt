@@ -126,6 +126,20 @@ class AdminViewModel : ViewModel() {
         }
     }
 
+    fun deleteUser(uid: String) {
+        viewModelScope.launch {
+            try {
+                _loading.value = true
+                repository.deleteUserData(uid)
+                _success.value = "Utente e relativi dati eliminati con successo"
+            } catch (e: Exception) {
+                _error.value = e.message
+            } finally {
+                _loading.value = false
+            }
+        }
+    }
+
     fun updateGame(gameId: String, partitaGiocata: Boolean, risultato: String?) {
         viewModelScope.launch {
             try {

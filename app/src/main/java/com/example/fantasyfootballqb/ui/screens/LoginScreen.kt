@@ -20,8 +20,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
 import com.example.fantasyfootballqb.R
 
-
-
 @Composable
 fun LoginScreen(
     onLoginNavigate: (isAdmin: Boolean) -> Unit,
@@ -108,7 +106,17 @@ fun LoginScreen(
 
                             val uid = user.uid
                             val doc = db.collection("users").document(uid).get().await()
-                            val isAdmin = doc.exists() && (doc.getBoolean("isAdmin") == true)
+
+                            // --- NUOVO CONTROLLO ACCOUNT ELIMINATO ---
+                            if (!doc.exists()) {
+                                auth.signOut() // Forza l'uscita da Firebase Auth
+                                snackbarHostState.showSnackbar("Questo account è stato eliminato dall'amministratore.")
+                                loading = false
+                                return@launch // Ferma l'esecuzione qui, non entra nell'app
+                            }
+                            // -----------------------------------------
+
+                            val isAdmin = doc.getBoolean("isAdmin") == true
                             // naviga in base al valore isAdmin
                             onLoginNavigate(isAdmin)
                         } catch (e: Exception) {

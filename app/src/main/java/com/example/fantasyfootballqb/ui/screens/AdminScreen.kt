@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -124,7 +127,7 @@ fun AdminScreen(
                     }
                 }
 
-                // Calcolo week card (il resto rimane invariato) ...
+                // Calcolo week card
                 Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                     Column(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Calcolo week:", style = MaterialTheme.typography.titleSmall)
@@ -192,9 +195,16 @@ fun AdminScreen(
 
             // -- dialogs (users / modify games / qbs / formations ecc.) --
             if (showUsersDialog) {
-                UsersDialog(users = users.filter { !it.isAdmin }, onDismiss = { showUsersDialog = false }, onSave = { u,  newUsername, newNomeTeam ->
-                    vm.updateUserData(u.uid, newUsername, newNomeTeam)
-                })
+                UsersDialog(
+                    users = users.filter { !it.isAdmin },
+                    onDismiss = { showUsersDialog = false },
+                    onSave = { u,  newUsername, newNomeTeam ->
+                        vm.updateUserData(u.uid, newUsername, newNomeTeam)
+                    },
+                    onDelete = { u ->
+                        vm.deleteUser(u.uid)
+                    }
+                )
             }
 
             if (showModifyGamesDialog) {
@@ -270,13 +280,18 @@ fun AdminScreen(
     }
 }
 
-
 /**
- * UsersDialog: mostra lista utenti e permette modifica.
+ * UsersDialog: mostra lista utenti e permette modifica o eliminazione.
  */
 @Composable
-private fun UsersDialog(users: List<AdminUser>, onDismiss: () -> Unit, onSave: (AdminUser, String, String) -> Unit) {
+private fun UsersDialog(
+    users: List<AdminUser>,
+    onDismiss: () -> Unit,
+    onSave: (AdminUser, String, String) -> Unit,
+    onDelete: (AdminUser) -> Unit
+) {
     var editingUser by remember { mutableStateOf<AdminUser?>(null) }
+    var userToDelete by remember { mutableStateOf<AdminUser?>(null) }
 
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Utenti") }, text = {
         Column(modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
@@ -290,7 +305,23 @@ private fun UsersDialog(users: List<AdminUser>, onDismiss: () -> Unit, onSave: (
                                 Text(u.email, fontWeight = FontWeight.SemiBold)
                                 Text(u.username, style = MaterialTheme.typography.bodySmall)
                             }
-                            Button(onClick = { editingUser = u }) { Text("Modifica") }
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                IconButton(onClick = { editingUser = u }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Modifica utente",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                IconButton(onClick = { userToDelete = u }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Elimina utente",
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
                         }
                         Divider()
                     }
@@ -301,9 +332,9 @@ private fun UsersDialog(users: List<AdminUser>, onDismiss: () -> Unit, onSave: (
         TextButton(onClick = onDismiss) { Text("Chiudi") }
     }, dismissButton = {})
 
+    // Dialog Modifica utente esistente
     if (editingUser != null) {
         val u = editingUser!!
-        var newEmail by remember { mutableStateOf(u.email) }
         var newUsername by remember { mutableStateOf(u.username) }
         var newNomeTeam by remember { mutableStateOf(u.nomeTeam ?: "") }
 
@@ -321,12 +352,39 @@ private fun UsersDialog(users: List<AdminUser>, onDismiss: () -> Unit, onSave: (
             TextButton(onClick = { editingUser = null }) { Text("Annulla") }
         })
     }
+
+    // Dialog di conferma eliminazione
+    if (userToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { userToDelete = null },
+            title = { Text("Conferma eliminazione") },
+            text = {
+                Text("Sei sicuro di voler eliminare l'utente ${userToDelete!!.username}? " +
+                        "Verranno cancellati il suo profilo e tutte le sue formazioni dal database. " +
+                        "L'operazione è irreversibile.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDelete(userToDelete!!)
+                        userToDelete = null // Chiude il dialog
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Elimina Definitivamente")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { userToDelete = null }) { Text("Annulla") }
+            }
+        )
+    }
 }
+
 
 /**
  * ModifyGamesDialog: modifica risultato -> imposta partitaGiocata true se risultato non vuoto
  */
-
 @Composable
 private fun ModifyGamesDialog(
     week: Int?,
@@ -637,8 +695,12 @@ private fun ModifyFormationsDialog(
                                     // show total score only (no QB list)
                                     Text("Punteggio totale: ${uf.totalWeekScore.toInt()}", style = MaterialTheme.typography.bodySmall)
                                 }
-                                Button(onClick = { onEdit(uf) }) {
-                                    Text("Modifica")
+                                IconButton(onClick = { onEdit(uf) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Modifica formazione",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
                                 }
                             }
                             Divider()

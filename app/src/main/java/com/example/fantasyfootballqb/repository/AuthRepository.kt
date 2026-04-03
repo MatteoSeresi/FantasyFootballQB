@@ -31,8 +31,21 @@ class AuthRepository {
 
     suspend fun login(email: String, password: String): Result<String> {
         return try {
+            // 1. Eseguiamo il login standard con Firebase Auth
             val authResult = auth.signInWithEmailAndPassword(email, password).await()
             val uid = authResult.user?.uid ?: return Result.failure(Exception("UID non disponibile"))
+
+            // 2. CONTROLLO SICUREZZA: Verifichiamo se l'utente esiste ancora nel database Firestore
+            val userDoc = db.collection("users").document(uid).get().await()
+
+            if (!userDoc.exists()) {
+                // Il documento non esiste: l'amministratore ha eliminato questo utente.
+                // Lo scolleghiamo forzatamente da Firebase Auth per sicurezza.
+                auth.signOut()
+                return Result.failure(Exception("Questo account è stato eliminato dall'amministratore."))
+            }
+
+            // Se il documento esiste, il login va a buon fine
             Result.success(uid)
         } catch (e: Exception) {
             Result.failure(e)

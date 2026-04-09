@@ -24,8 +24,8 @@ fun AppTopBar(
     title: String = "Fantasy Football",
     modifier: Modifier = Modifier,
     logoResId: Int = R.drawable.logo,
-    logoSize: Dp = 75.dp,        // dimensione default del logo (square)
-    barHeight: Dp = 100.dp       // altezza della topbar
+    logoSize: Dp = 75.dp,
+    barHeight: Dp = 100.dp
 ) {
     Surface(
         color = MaterialTheme.colorScheme.primary,
@@ -44,7 +44,7 @@ fun AppTopBar(
                     .padding(horizontal = 12.dp)
                     .fillMaxWidth()
             ) {
-                // Logo (opzionale)
+                // Logo
                 Image(
                     painter = painterResource(id = logoResId),
                     contentDescription = "Logo",
@@ -55,7 +55,7 @@ fun AppTopBar(
                 )
                 // Titolo
                 Text(
-                    text = "Fantasy Football",
+                    text = title,
                     color = MaterialTheme.colorScheme.onPrimary,
                     fontSize = 32.sp,
                     fontWeight = FontWeight.Bold,

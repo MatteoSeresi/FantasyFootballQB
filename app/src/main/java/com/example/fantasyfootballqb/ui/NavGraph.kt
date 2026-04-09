@@ -67,8 +67,6 @@ fun NavGraph(
                 }
             })
         }
-
-        // composable Admin screen
         composable(Routes.Admin.route) {
             AdminScreen(onLogout = {
                 navController.navigate(Routes.Login.route) {

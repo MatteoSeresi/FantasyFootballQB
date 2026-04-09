@@ -87,24 +87,16 @@ fun DocumentSnapshot.toWeekStats(): WeekStats? {
 
 fun DocumentSnapshot.toFormation(): Formation? {
     return try {
-        // 1. Recupera weekNumber (prova field o usa id documento)
         val wNum = this.getLong("weekNumber")?.toInt()
             ?: this.getLong("week")?.toInt()
             ?: this.id.toIntOrNull()
             ?: 0
-
-        // 2. Recupera la lista di QB
         val ids = (this.get("qbIds") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
-
-        // 3. Recupera stato locked
         val isLocked = this.getBoolean("locked") ?: false
-
-        // 4. Recupera eventuale totale salvato (gestisce nomi sporchi)
         val rawScore = this.get("totalWeekScore")
             ?: this.get("totalScore")
             ?: this.get("punteggio")
             ?: this.get("punteggioQbs")
-
         val scoreVal = when (rawScore) {
             is Number -> rawScore.toDouble()
             is String -> rawScore.toDoubleOrNull()

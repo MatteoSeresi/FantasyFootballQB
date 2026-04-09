@@ -1,6 +1,5 @@
 package com.example.fantasyfootballqb.ui.screens
 
-import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -12,21 +11,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.fantasyfootballqb.R
+import com.example.fantasyfootballqb.ui.viewmodel.AuthUiState
+import com.example.fantasyfootballqb.ui.viewmodel.AuthViewModel
 
 @Composable
 fun LoginScreen(
     onLoginNavigate: (isAdmin: Boolean) -> Unit,
-    onRegister: () -> Unit
+    onRegister: () -> Unit,
+    authViewModel: AuthViewModel = viewModel()
 ) {
-    val auth = FirebaseAuth.getInstance()
-    val db = FirebaseFirestore.getInstance()
+    val loginState by authViewModel.loginState.collectAsState()
 
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -34,7 +33,22 @@ fun LoginScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    var loading by remember { mutableStateOf(false) }
+
+    // Gestiamo i cambiamenti di stato (Errori e Navigazione di Successo)
+    LaunchedEffect(loginState) {
+        when (loginState) {
+            is AuthUiState.Error -> {
+                val errorMessage = (loginState as AuthUiState.Error).message
+                snackbarHostState.showSnackbar(errorMessage)
+            }
+            is AuthUiState.Success -> {
+                val successState = loginState as AuthUiState.Success
+                // Navighiamo passando il ruolo corretto
+                onLoginNavigate(successState.isAdmin)
+            }
+            else -> { /* Idle o Loading */ }
+        }
+    }
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         Box(modifier = Modifier
@@ -92,41 +106,19 @@ fun LoginScreen(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Button(onClick = {
-                    scope.launch {
-                        try {
-                            loading = true
-                            val result = auth.signInWithEmailAndPassword(email.trim(), password).await()
-                            val user = auth.currentUser
-                            if (user == null) {
-                                snackbarHostState.showSnackbar("Login non riuscito")
-                                loading = false
-                                return@launch
-                            }
-
-                            val uid = user.uid
-                            val doc = db.collection("users").document(uid).get().await()
-
-                            // --- NUOVO CONTROLLO ACCOUNT ELIMINATO ---
-                            if (!doc.exists()) {
-                                auth.signOut() // Forza l'uscita da Firebase Auth
-                                snackbarHostState.showSnackbar("Questo account è stato eliminato dall'amministratore.")
-                                loading = false
-                                return@launch // Ferma l'esecuzione qui, non entra nell'app
-                            }
-                            // -----------------------------------------
-
-                            val isAdmin = doc.getBoolean("isAdmin") == true
-                            // naviga in base al valore isAdmin
-                            onLoginNavigate(isAdmin)
-                        } catch (e: Exception) {
-                            Log.e("LoginScreen", "login error: ${e.message}", e)
-                            snackbarHostState.showSnackbar(e.message ?: "Errore login")
-                        } finally {
-                            loading = false
+                Button(
+                    onClick = {
+                        if (email.isNotBlank() && password.isNotBlank()) {
+                            // Deleghiamo al ViewModel l'operazione
+                            authViewModel.login(email, password)
+                        } else {
+                            scope.launch { snackbarHostState.showSnackbar("Compila tutti i campi per accedere") }
                         }
-                    }
-                }, modifier = Modifier.fillMaxWidth()) {
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    // Disabilitiamo il pulsante se l'app sta già caricando
+                    enabled = loginState !is AuthUiState.Loading
+                ) {
                     Text("Accedi")
                 }
 
@@ -136,7 +128,8 @@ fun LoginScreen(
                 }
             }
 
-            if (loading) {
+            // Se lo stato è Loading, mostriamo l'indicatore di caricamento
+            if (loginState is AuthUiState.Loading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
         }

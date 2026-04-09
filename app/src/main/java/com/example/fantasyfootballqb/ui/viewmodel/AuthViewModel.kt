@@ -10,7 +10,7 @@ import com.example.fantasyfootballqb.repository.AuthRepository
 sealed class AuthUiState {
     object Idle : AuthUiState()
     object Loading : AuthUiState()
-    data class Success(val uid: String) : AuthUiState()
+    data class Success(val uid: String, val isAdmin: Boolean = false) : AuthUiState()
     data class Error(val message: String) : AuthUiState()
 }
 
@@ -39,7 +39,9 @@ class AuthViewModel(private val repo: AuthRepository = AuthRepository()) : ViewM
             _loginState.value = AuthUiState.Loading
             val res = repo.login(email.trim(), password)
             if (res.isSuccess) {
-                _loginState.value = AuthUiState.Success(res.getOrThrow())
+                // Recuperiamo i due valori estratti dal repository
+                val (uid, isAdmin) = res.getOrThrow()
+                _loginState.value = AuthUiState.Success(uid, isAdmin)
             } else {
                 _loginState.value = AuthUiState.Error(res.exceptionOrNull()?.message ?: "Errore sconosciuto")
             }

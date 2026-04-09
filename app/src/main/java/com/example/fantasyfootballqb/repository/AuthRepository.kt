@@ -28,8 +28,7 @@ class AuthRepository {
         }
     }
 
-
-    suspend fun login(email: String, password: String): Result<String> {
+    suspend fun login(email: String, password: String): Result<Pair<String, Boolean>> {
         return try {
             // 1. Eseguiamo il login standard con Firebase Auth
             val authResult = auth.signInWithEmailAndPassword(email, password).await()
@@ -45,8 +44,11 @@ class AuthRepository {
                 return Result.failure(Exception("Questo account è stato eliminato dall'amministratore."))
             }
 
-            // Se il documento esiste, il login va a buon fine
-            Result.success(uid)
+            // 3. Recuperiamo il ruolo dell'utente
+            val isAdmin = userDoc.getBoolean("isAdmin") == true
+
+            // Restituiamo sia l'ID che il ruolo
+            Result.success(Pair(uid, isAdmin))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -56,5 +58,7 @@ class AuthRepository {
         auth.signOut()
     }
 
-    fun getCurrentUid(): String? = auth.currentUser?.uid
+    fun getCurrentUid(): String? {
+        return auth.currentUser?.uid
+    }
 }

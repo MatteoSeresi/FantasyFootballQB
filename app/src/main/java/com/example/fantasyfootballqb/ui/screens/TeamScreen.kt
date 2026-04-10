@@ -39,7 +39,6 @@ fun TeamScreen(
 
     var selectedWeek by remember { mutableStateOf(weekDefault) }
 
-    // selected slots: 3 nullable
     var selectedSlots by remember { mutableStateOf<List<QB?>>(listOf(null, null, null)) }
     var slotDialogOpen by remember { mutableStateOf(false) }
     var slotIndexForDialog by remember { mutableStateOf<Int?>(null) }

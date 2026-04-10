@@ -35,6 +35,7 @@ class AdminViewModel : ViewModel() {
     private val _availableWeeks = MutableStateFlow<List<Int>>(emptyList())
     val availableWeeks: StateFlow<List<Int>> = _availableWeeks
 
+    // Mappa per raggruppare automaticamente le partite in base alla Week
     private val _gamesByWeek = MutableStateFlow<Map<Int, List<Game>>>(emptyMap())
     val gamesByWeek: StateFlow<Map<Int, List<Game>>> = _gamesByWeek
 
@@ -44,6 +45,7 @@ class AdminViewModel : ViewModel() {
     private val _userFormations = MutableStateFlow<List<UserFormationRow>>(emptyList())
     val userFormations: StateFlow<List<UserFormationRow>> = _userFormations
 
+    // Gestione stati interfaccia (caricamento ed esiti operazioni)
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading
 
@@ -59,12 +61,14 @@ class AdminViewModel : ViewModel() {
     private val _weekCalculated = MutableStateFlow(false)
     val weekCalculated: StateFlow<Boolean> = _weekCalculated
 
+
     init {
         observeUsers()
         observeGames()
         observeQBs()
     }
 
+    //Ascolta in tempo reale la collezione degli utenti
     private fun observeUsers() {
         viewModelScope.launch {
             repository.observeAllUsers().collect { userList ->
@@ -75,6 +79,8 @@ class AdminViewModel : ViewModel() {
         }
     }
 
+
+    //Ascolta in tempo reale le partite.
     private fun observeGames() {
         viewModelScope.launch {
             repository.observeGames().collect { games ->
@@ -88,6 +94,7 @@ class AdminViewModel : ViewModel() {
         }
     }
 
+    //Scarica e mantiene aggiornato l'elenco dei Quarterback.
     private fun observeQBs() {
         viewModelScope.launch {
             repository.observeQBs().collect { list ->
@@ -96,10 +103,12 @@ class AdminViewModel : ViewModel() {
         }
     }
 
+    // Funzione per selezionare la week dal menu a tendina
     fun setSelectedWeek(week: Int?) {
         _selectedWeek.value = week
     }
 
+    // Ascolta se una week è già stata calcolata
     fun observeWeekCalculated(week: Int) {
         viewModelScope.launch {
             repository.observeWeekCalculated(week).collect { isCalc ->
@@ -108,6 +117,9 @@ class AdminViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Permette all'admin di cambiare nome utente o squadra
+     */
     fun updateUserData(uid: String, username: String, nomeTeam: String) {
         viewModelScope.launch {
             try {
@@ -126,6 +138,7 @@ class AdminViewModel : ViewModel() {
         }
     }
 
+    //Elimina completamente un utente dal sistema e delega al repository l'eliminazione a cascata (documento utente + tutte le sue formazioni).
     fun deleteUser(uid: String) {
         viewModelScope.launch {
             try {
@@ -140,6 +153,7 @@ class AdminViewModel : ViewModel() {
         }
     }
 
+    //Aggiorna i dati della singola partita: spunta la partita come "Giocata" e salva il risultato testuale.
     fun updateGame(gameId: String, partitaGiocata: Boolean, risultato: String?) {
         viewModelScope.launch {
             try {
@@ -154,6 +168,7 @@ class AdminViewModel : ViewModel() {
         }
     }
 
+    //Salva o modifica il punteggio di un singolo Quarterback in una specifica partita (Game).
     fun setQBScore(gameId: String, qbId: String, punteggio: Double) {
         viewModelScope.launch {
             try {
@@ -168,31 +183,29 @@ class AdminViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Prima di calcolare la settimana, controlla che
+     * l'amministratore non abbia dimenticato nulla. Genera una lista dei dati mancanti.
+     */
     suspend fun validateWeek(week: Int): List<String> {
         val problems = mutableListOf<String>()
         try {
             val games = repository.getGamesForWeek(week)
             if (games.isEmpty()) return listOf("Nessuna partita per la week $week")
 
-            // 1. Verifica giocate
+            // 1. Verifica che tutte le caselle "Partita Giocata" siano state spuntate
             games.filter { !it.partitaGiocata }.forEach { g ->
                 problems.add("${g.squadraCasa} vs ${g.squadraOspite}: Non giocata")
             }
 
-            // 2. Verifica weekstats
+            // 2. Verifica che siano stati inseriti i punteggi dei QB per quelle partite
             for (g in games) {
-                // Ora otteniamo una lista di oggetti WeekStats puliti
                 val stats = repository.getWeekStatsForGame(g.id)
 
                 if (stats.isEmpty()) {
                     problems.add("${g.squadraCasa} vs ${g.squadraOspite}: Nessun punteggio inserito")
                     continue
                 }
-
-                // Nota: Il controllo "Punteggio non valido" non serve più in questa forma
-                // perché il Mapper converte automaticamente i formati errati in 0.0.
-                // Se vuoi, puoi controllare se ci sono punteggi a 0.0, ma potrebbe essere un punteggio reale.
-                // Per ora ci accontentiamo di sapere che il record esiste.
             }
         } catch (e: Exception) {
             problems.add("Errore validazione: ${e.message}")
@@ -200,17 +213,20 @@ class AdminViewModel : ViewModel() {
         return problems
     }
 
+    // Calcolo della week
     fun calculateWeek(week: Int) {
         viewModelScope.launch {
             _loading.value = true
             _error.value = null
             try {
+                // Esegue il controllo di sicurezza
                 val errors = validateWeek(week)
                 if (errors.isNotEmpty()) {
                     _error.value = "Impossibile calcolare:\n${errors.joinToString("\n")}"
                     return@launch
                 }
 
+                // Chiude le partite non ancora calcolate
                 val games = repository.getGamesForWeek(week)
                 val toUpdate = games.filter { !it.partitaCalcolata }.map { it.id }
 
@@ -229,6 +245,11 @@ class AdminViewModel : ViewModel() {
     }
 
 
+    /**
+     * Carica le formazioni degli utenti.
+     * Incrocia tutti gli utenti con le loro formazioni settimanali e somma
+     * in tempo reale i punteggi dei singoli QB scelti per mostrare il punteggio totale.
+     */
     fun loadUserFormationsForWeek(week: Int?) {
         viewModelScope.launch {
             if (week == null) {
@@ -236,10 +257,12 @@ class AdminViewModel : ViewModel() {
             }
             _loading.value = true
             try {
+                // Mappatura delle partite e delle statistiche
                 val games = _gamesByWeek.value[week] ?: emptyList()
                 val gameIds = games.map { it.id }
-                val allStats = repository.getAllWeekStats() // List<WeekStats>
+                val allStats = repository.getAllWeekStats()
 
+                // Associa ogni QB ai suoi punteggi per velocizzare il calcolo
                 val statsMap = mutableMapOf<String, MutableList<Double>>()
                 for (stat in allStats) {
                     if (gameIds.contains(stat.gameId)) {
@@ -248,14 +271,16 @@ class AdminViewModel : ViewModel() {
                 }
 
                 val rows = mutableListOf<UserFormationRow>()
+
+                // Cicla tutti gli utenti (esclusi gli admin)
                 for (u in _users.value) {
                     if (u.isAdmin) continue
 
-                    // --- NUOVO ---
+                    // Recupera la formazione salvata dall'utente
                     val formation = repository.getFormation(u.uid, week)
                     val qbIds = formation?.qbIds ?: emptyList()
-                    // -------------
 
+                    // Somma i punti dei 3 QB scelti
                     var total = 0.0
                     qbIds.forEach { qid ->
                         val scores = statsMap[qid]
@@ -273,10 +298,12 @@ class AdminViewModel : ViewModel() {
         }
     }
 
+    // Permette all'admin di modificare i 3 Quarterback schierati da un utente
     fun updateUserFormation(uid: String, week: Int, newQbIds: List<String>) {
         viewModelScope.launch {
             _loading.value = true
             try {
+                // Validazione sicurezza Admin
                 if (newQbIds.size != 3 || newQbIds.toSet().size != 3) {
                     _error.value = "Servono 3 QB distinti."
                     return@launch
@@ -288,6 +315,7 @@ class AdminViewModel : ViewModel() {
                 )
                 repository.updateUserFormationData(uid, week, data)
 
+                // Ricarica la tabella dopo la modifica
                 loadUserFormationsForWeek(week)
                 _success.value = "Formazione aggiornata"
             } catch (e: Exception) {

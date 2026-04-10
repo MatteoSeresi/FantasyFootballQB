@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-// Enum per ricordare cosa voleva fare l'utente prima che chiedessimo la password
 enum class PendingAction { NONE, DELETE_ACCOUNT }
 
 class ProfileViewModel : ViewModel() {
@@ -64,7 +63,6 @@ class ProfileViewModel : ViewModel() {
             }
             _email.value = auth.currentUser?.email
 
-            // FIX CARICAMENTO INFINITO:
             // Non usiamo try/finally qui perché .collect sospende all'infinito.
             // Spegniamo il loading direttamente dentro il collect appena arrivano i dati.
             repository.observeUser(uid)
@@ -100,7 +98,7 @@ class ProfileViewModel : ViewModel() {
             _loading.value = true
             val user = auth.currentUser ?: return@launch
             try {
-                // 1. Fermiamo l'ascolto per evitare crash (Importante!)
+                //  Fermiamo l'ascolto per evitare crash
                 userObserverJob?.cancel()
                 delay(100)
 

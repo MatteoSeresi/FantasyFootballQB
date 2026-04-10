@@ -9,7 +9,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-// Classe di supporto richiesta dalla tua UI
 data class QBStat(
     val qb: QB,
     val punteggio: Double?
@@ -19,11 +18,9 @@ class CalendarViewModel : ViewModel() {
 
     private val repository = FireStoreRepository()
 
-    // La tua UI si aspetta una Mappa: Week -> Lista Partite
     private val _gamesByWeek = MutableStateFlow<Map<Int, List<Game>>>(emptyMap())
     val gamesByWeek: StateFlow<Map<Int, List<Game>>> = _gamesByWeek
 
-    // La tua UI si aspetta una lista di numeri interi per le settimane
     private val _weeks = MutableStateFlow<List<Int>>(emptyList())
     val weeks: StateFlow<List<Int>> = _weeks
 
@@ -56,17 +53,17 @@ class CalendarViewModel : ViewModel() {
         }
     }
 
-    // Funzione chiamata al click sulla lente d'ingrandimento
+    // Funzione dettagli partita
     suspend fun getStatsForGame(gameId: String, played: Boolean): List<QBStat> {
         if (!played) return emptyList()
 
         return try {
-            // 1. Scarichiamo le stats pulite (WeekStats) dal repository
+            // Scarichiamo le stats pulite (WeekStats) dal repository
             val weekStats = repository.getWeekStatsForGame(gameId)
 
             val result = mutableListOf<QBStat>()
 
-            // 2. Per ogni stat, dobbiamo recuperare i dettagli del QB (nome, squadra)
+            // Per ogni stat, recupero i dettagli del QB (nome, squadra)
             for (stat in weekStats) {
                 val qb = repository.getQB(stat.qbId)
                 if (qb != null) {

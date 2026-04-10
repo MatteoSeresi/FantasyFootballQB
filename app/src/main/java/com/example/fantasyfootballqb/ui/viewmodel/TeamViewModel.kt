@@ -55,6 +55,10 @@ class TeamViewModel : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
+    /**
+     * Il blocco init viene eseguito non appena il ViewModel viene creato (quando l'utente apre la schermata Team).
+     * Fa partire il caricamento dei dati fondamentali in background.
+     */
     init {
         observeQBs()
         loadUserProfile()
@@ -62,6 +66,12 @@ class TeamViewModel : ViewModel() {
         loadFirstUncalculatedWeek()
     }
 
+
+    /**
+     * Ascolta in tempo reale la lista dei Quarterback dal database.
+     * Applica un filtro fondamentale per le regole del gioco:
+     * L'utente può vedere e selezionare SOLO i giocatori con stato "Titolare".
+     */
     private fun observeQBs() {
         viewModelScope.launch {
             repository.observeQBs().collect { qbs ->
@@ -70,6 +80,7 @@ class TeamViewModel : ViewModel() {
         }
     }
 
+    //Recupera il nome della squadra scelto dall'utente per mostrarlo nell'intestazione dell'app.
     private fun loadUserProfile() {
         viewModelScope.launch {
             val uid = auth.currentUser?.uid ?: return@launch
@@ -79,6 +90,7 @@ class TeamViewModel : ViewModel() {
         }
     }
 
+    //Analizza quante Week esistono e permette al menu a tendina della UI di popolarsi con i numeri esatti.
     fun loadAvailableWeeks() {
         viewModelScope.launch {
             try {
@@ -105,6 +117,7 @@ class TeamViewModel : ViewModel() {
         }
     }
 
+    //Trova la partita con la week più bassa tra tutte quelle che NON sono ancora state calcolate, ossia la week in corso
     private fun calculateFirstUncalculatedInternal(games: List<Game>) {
         val firstUncalc = games
             .filter { !it.partitaCalcolata }
@@ -112,6 +125,7 @@ class TeamViewModel : ViewModel() {
         _firstUncalculatedWeek.value = firstUncalc?.weekNumber
     }
 
+    // Ascolta in tempo reale se l'amministratore ha confermato e calcolato i risultati di una specifica week.
     fun observeWeekCalculated(week: Int) {
         viewModelScope.launch {
             repository.observeWeekCalculated(week).collect { isCalculated ->
@@ -120,6 +134,7 @@ class TeamViewModel : ViewModel() {
         }
     }
 
+    // Carica tutte le partite che si disputano nella settimana selezionata dall'utente.
     fun loadGamesForWeek(week: Int) {
         viewModelScope.launch {
             try {
@@ -131,6 +146,10 @@ class TeamViewModel : ViewModel() {
         }
     }
 
+    /**
+     * FUNZIONE PRINCIPALE: Controlla se l'utente ha già schierato la formazione per la week scelta.
+     * È la funzione che viene innescata ogni volta che si cambia la week dal menu a tendina.
+     */
     fun loadUserFormationForWeek(week: Int) {
         viewModelScope.launch {
             _loading.value = true
@@ -141,21 +160,21 @@ class TeamViewModel : ViewModel() {
                 loadGamesForWeek(week)
                 observeWeekCalculated(week)
 
-                // --- NUOVO METODO PULITO ---
                 val formation = repository.getFormation(uid, week)
 
                 if (formation != null) {
+                    //formazine già esistente
                     _formationLocked.value = formation.locked
 
                     val qbList = formation.qbIds.mapNotNull { id -> repository.getQB(id) }
                     _formationQBs.value = qbList
                     loadScoresForFormation(qbList, week)
                 } else {
+                    //formazione ancora da inserire
                     _formationLocked.value = false
                     _formationQBs.value = emptyList()
                     _formationScores.value = emptyList()
                 }
-                // ---------------------------
 
             } catch (e: Exception) {
                 Log.e("TeamVM", "Error: ${e.message}", e)
@@ -166,6 +185,7 @@ class TeamViewModel : ViewModel() {
         }
     }
 
+    // Salva la formazione decisa dall'utente nel database.
     fun submitFormation(week: Int, qbIds: List<String>) {
         if (qbIds.size != 3) {
             _error.value = "Devi selezionare 3 QB distinti"
@@ -194,16 +214,22 @@ class TeamViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Unisce i punteggi dei giocatori con le partite.
+     * Genera la lista degli oggetti "QBWithScore" mostrati nella lista della formazione.
+     */
     private fun loadScoresForFormation(qbs: List<QB>, week: Int) {
         viewModelScope.launch {
             _loading.value = true
             try {
+                // Selezioniamo le partite della week corretta
                 val games = if (_gamesForWeek.value.isNotEmpty() && _gamesForWeek.value.first().weekNumber == week) {
                     _gamesForWeek.value
                 } else {
                     repository.getGamesForWeek(week)
                 }
 
+                // Mappiamo le squadre per capire chi gioca contro chi
                 val teamToOpponent = mutableMapOf<String, String>()
                 for (g in games) {
                     teamToOpponent[g.squadraCasa] = g.squadraOspite
@@ -212,11 +238,11 @@ class TeamViewModel : ViewModel() {
 
                 val results = mutableListOf<QBWithScore>()
                 for (qb in qbs) {
-                    // Usiamo la nuova funzione pulita getQBWeekStats
-                    // che restituisce una lista di oggetti WeekStats, non Documenti raw.
+                    // Otteniamo le statistiche pulite del singolo QB
                     val stats = repository.getQBWeekStats(qb.id)
 
-                    // Cerchiamo l'oggetto WeekStats che corrisponde a una delle partite di questa week
+                    // Poiché un QB ha tante statistiche (una per ogni partita giocata in stagione),
+                    // troviamo la statistica che corrisponde esattamente alla partita di QUESTA week.
                     val matchStat = stats.find { stat ->
                         games.any { game -> game.id == stat.gameId }
                     }

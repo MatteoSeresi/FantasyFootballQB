@@ -17,10 +17,10 @@ data class QBWithScore(
     val opponentTeam: String?
 )
 
-class TeamViewModel : ViewModel() {
-
-    private val repository = FireStoreRepository()
-    private val auth = FirebaseAuth.getInstance()
+class TeamViewModel  (
+    private val repository: FireStoreRepository = FireStoreRepository(),
+    private val auth: FirebaseAuth = FirebaseAuth.getInstance()
+) : ViewModel() {
 
     private val _availableQBs = MutableStateFlow<List<QB>>(emptyList())
     val availableQBs: StateFlow<List<QB>> = _availableQBs
@@ -187,10 +187,11 @@ class TeamViewModel : ViewModel() {
 
     // Salva la formazione decisa dall'utente nel database.
     fun submitFormation(week: Int, qbIds: List<String>) {
-        if (qbIds.size != 3) {
+        if (qbIds.size != 3 || qbIds.toSet().size != 3) {
             _error.value = "Devi selezionare 3 QB distinti"
             return
         }
+
         viewModelScope.launch {
             _loading.value = true
             _error.value = null

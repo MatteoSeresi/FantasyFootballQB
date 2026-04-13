@@ -240,7 +240,7 @@ fun AdminScreen(
             if (editingFormationRow != null) {
                 val targetWeek = modifyFormationsWeek
                 if (targetWeek != null) {
-                    EditFormationDialog(userFormation = editingFormationRow!!, week = targetWeek, availableWeeks = weeks, qbs = qbs, onDismiss = {
+                    EditFormationDialog(userFormation = editingFormationRow!!, week = targetWeek,  qbs = qbs, onDismiss = {
                         editingFormationRow = null
                         vm.loadUserFormationsForWeek(modifyFormationsWeek)
                     }, onSave = { uid, weekNum, qbIds ->
@@ -718,7 +718,6 @@ private fun ModifyFormationsDialog(
 private fun EditFormationDialog(
     userFormation: UserFormationRow,
     week: Int,
-    availableWeeks: List<Int>,
     qbs: List<QB>,
     onDismiss: () -> Unit,
     onSave: (uid: String, week: Int, qbIds: List<String>) -> Unit
@@ -733,81 +732,66 @@ private fun EditFormationDialog(
 
     var errorMsg by remember { mutableStateOf<String?>(null) }
 
-    // local week selection inside edit dialog (so you can change the week where to save this formation)
-    var weekLocal by remember { mutableStateOf(week) }
-    var expandedWeek by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Modifica formazione: ${userFormation.username}") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
 
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Modifica formazione: ${userFormation.username}") }, text = {
-        Column(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Week:", modifier = Modifier.padding(end = 8.dp))
-                Box {
-                    Button(onClick = { expandedWeek = true }) {
-                        Text(weekLocal.toString())
-                    }
-                    DropdownMenu(expanded = expandedWeek, onDismissRequest = { expandedWeek = false }) {
-                        availableWeeks.forEach { w ->
-                            DropdownMenuItem(text = { Text("Week $w") }, onClick = {
-                                weekLocal = w
-                                expandedWeek = false
-                            })
-                        }
-                    }
-                }
-            }
+                for (i in 0 until 3) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Slot ${i + 1}:", modifier = Modifier.width(80.dp))
+                        var expanded by remember { mutableStateOf(false) }
+                        val currentId = slots.getOrNull(i) ?: ""
+                        val currentLabel = qbs.firstOrNull { it.id == currentId }?.nome ?: "Seleziona QB"
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            for (i in 0 until 3) {
-                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Slot ${i + 1}:", modifier = Modifier.width(80.dp))
-                    var expanded by remember { mutableStateOf(false) }
-                    val currentId = slots.getOrNull(i) ?: ""
-                    val currentLabel = qbs.firstOrNull { it.id == currentId }?.nome ?: "Seleziona QB"
-
-                    Box {
-                        Button(onClick = { expanded = true }) {
-                            Text(currentLabel)
-                        }
-                        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                            val candidates = qbs.filter { it.stato == "Titolare" || it.stato.isBlank() }
-                            candidates.forEach { qb ->
-                                DropdownMenuItem(text = { Text("${qb.nome} (${qb.squadra})") }, onClick = {
-                                    slots[i] = qb.id
+                        Box {
+                            Button(onClick = { expanded = true }) {
+                                Text(currentLabel)
+                            }
+                            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                                val candidates = qbs.filter { it.stato == "Titolare" || it.stato.isBlank() }
+                                candidates.forEach { qb ->
+                                    DropdownMenuItem(text = { Text("${qb.nome} (${qb.squadra})") }, onClick = {
+                                        slots[i] = qb.id
+                                        expanded = false
+                                    })
+                                }
+                                // allow clearing selection per slot
+                                DropdownMenuItem(text = { Text("Rimuovi selezione") }, onClick = {
+                                    slots[i] = ""
                                     expanded = false
                                 })
                             }
-                            // allow clearing selection per slot
-                            DropdownMenuItem(text = { Text("Rimuovi selezione") }, onClick = {
-                                slots[i] = ""
-                                expanded = false
-                            })
                         }
                     }
                 }
-            }
 
-            if (!errorMsg.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(errorMsg!!, color = MaterialTheme.colorScheme.error)
+                if (!errorMsg.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(errorMsg!!, color = MaterialTheme.colorScheme.error)
+                }
             }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val ids = slots.map { it.trim() }.filter { it.isNotBlank() }
+                if (ids.size != 3) {
+                    errorMsg = "Devi selezionare esattamente 3 QB."
+                    return@TextButton
+                }
+                if (ids.toSet().size != 3) {
+                    errorMsg = "I 3 QB devono essere distinti."
+                    return@TextButton
+                }
+                // Passiamo direttamente la variabile 'week' ricevuta in input
+                onSave(userFormation.uid, week, ids)
+            }) {
+                Text("Salva")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Annulla") }
         }
-    }, confirmButton = {
-        TextButton(onClick = {
-            val ids = slots.map { it.trim() }.filter { it.isNotBlank() }
-            if (ids.size != 3) {
-                errorMsg = "Devi selezionare esattamente 3 QB."
-                return@TextButton
-            }
-            if (ids.toSet().size != 3) {
-                errorMsg = "I 3 QB devono essere distinti."
-                return@TextButton
-            }
-            onSave(userFormation.uid, weekLocal, ids)
-        }) {
-            Text("Salva")
-        }
-    }, dismissButton = {
-        TextButton(onClick = onDismiss) { Text("Annulla") }
-    })
+    )
 }

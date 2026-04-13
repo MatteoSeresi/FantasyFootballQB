@@ -70,6 +70,9 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
     // Libreria MockK per simulare oggetti complessi come Firebase
     testImplementation("io.mockk:mockk:1.13.8")
+    // Librerie per i Test Strumentati (UI) di Compose
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

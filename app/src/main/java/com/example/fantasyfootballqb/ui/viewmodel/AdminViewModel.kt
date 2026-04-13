@@ -25,9 +25,9 @@ data class UserFormationRow(
     val totalWeekScore: Double
 )
 
-class AdminViewModel : ViewModel() {
-
-    private val repository = FireStoreRepository()
+class AdminViewModel(
+    private val repository: FireStoreRepository = FireStoreRepository()
+) : ViewModel() {
 
     private val _users = MutableStateFlow<List<AdminUser>>(emptyList())
     val users: StateFlow<List<AdminUser>> = _users

@@ -117,9 +117,7 @@ class AdminViewModel(
         }
     }
 
-    /**
-     * Permette all'admin di cambiare nome utente o squadra
-     */
+    //Permette all'admin di modificare i dati utente
     fun updateUserData(uid: String, username: String, nomeTeam: String) {
         viewModelScope.launch {
             try {
@@ -183,22 +181,19 @@ class AdminViewModel(
         }
     }
 
-    /**
-     * Prima di calcolare la settimana, controlla che
-     * l'amministratore non abbia dimenticato nulla. Genera una lista dei dati mancanti.
-     */
+    //Prima di calcolare la settimana, controlla che l'amministratore non abbia dimenticato nulla. Genera una lista dei dati mancanti.
     suspend fun validateWeek(week: Int): List<String> {
         val problems = mutableListOf<String>()
         try {
             val games = repository.getGamesForWeek(week)
             if (games.isEmpty()) return listOf("Nessuna partita per la week $week")
 
-            // 1. Verifica che tutte le caselle "Partita Giocata" siano state spuntate
+            // Verifica che tutte le partite siano "giocate"
             games.filter { !it.partitaGiocata }.forEach { g ->
                 problems.add("${g.squadraCasa} vs ${g.squadraOspite}: Non giocata")
             }
 
-            // 2. Verifica che siano stati inseriti i punteggi dei QB per quelle partite
+            // Verifica che siano stati inseriti i punteggi dei QB per quelle partite
             for (g in games) {
                 val stats = repository.getWeekStatsForGame(g.id)
 

@@ -59,23 +59,21 @@ class RankingViewModel : ViewModel() {
                 val entries = mutableListOf<RankingEntry>()
                 val allWeekStats = repository.getAllWeekStats()
 
-                // Cache ID partite per week
                 val gamesCache = mutableMapOf<Int, List<String>>()
 
                 for (u in users) {
                     if (u.isAdmin) continue
 
-                    // --- QUI USIAMO IL NUOVO MODEL ---
                     // Restituisce List<Formation> pulita
                     val formations = repository.getUserFormations(u.uid)
                     var totalForUser = 0.0
 
                     for (formation in formations) {
-                        // 1. Se abbiamo già il totale salvato, usalo (il Mapper lo ha già trovato)
+                        // Se abbiamo già il totale salvato, usalo
                         if (formation.totalScore != null) {
                             totalForUser += formation.totalScore
                         } else {
-                            // 2. Altrimenti calcola al volo usando WeekStats
+                            // Altrimenti calcola usando WeekStats
                             if (formation.qbIds.isNotEmpty()) {
                                 val weekNum = formation.weekNumber
                                 val gameIds = gamesCache.getOrPut(weekNum) {
@@ -111,7 +109,6 @@ class RankingViewModel : ViewModel() {
             _selectedUserLoading.value = true
             _selectedUserDetail.value = null
             try {
-                // Anche qui usiamo List<Formation>
                 val formations = repository.getUserFormations(uid)
                 val counts = mutableMapOf<String, Int>()
 

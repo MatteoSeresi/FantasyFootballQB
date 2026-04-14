@@ -7,7 +7,7 @@ import com.example.fantasyfootballqb.models.WeekStats
 import com.example.fantasyfootballqb.models.Formation
 import com.google.firebase.firestore.DocumentSnapshot
 
-
+//Converte un documento Firestore in un oggetto Game
 fun DocumentSnapshot.toGame(): Game? {
     return try {
         Game(
@@ -24,6 +24,7 @@ fun DocumentSnapshot.toGame(): Game? {
     }
 }
 
+//Converte un documento Firestore in un oggetto QB
 fun DocumentSnapshot.toQB(): QB? {
     return try {
         QB(
@@ -37,6 +38,7 @@ fun DocumentSnapshot.toQB(): QB? {
     }
 }
 
+//Converte un documento Firestore in un oggetto User
 fun DocumentSnapshot.toUser(): User? {
     return try {
         User(
@@ -51,6 +53,7 @@ fun DocumentSnapshot.toUser(): User? {
     }
 }
 
+//Converte un documento Firestore in un oggetto WeekStats
 fun DocumentSnapshot.toWeekStats(): WeekStats? {
     return try {
 
@@ -85,6 +88,7 @@ fun DocumentSnapshot.toWeekStats(): WeekStats? {
     }
 }
 
+//Converte un documento Firestore in un oggetto Formation
 fun DocumentSnapshot.toFormation(): Formation? {
     return try {
         val wNum = this.getLong("weekNumber")?.toInt()

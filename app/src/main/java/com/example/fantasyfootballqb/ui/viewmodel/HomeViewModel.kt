@@ -12,7 +12,7 @@ import kotlinx.coroutines.launch
 class HomeViewModel : ViewModel() {
 
     private val auth = FirebaseAuth.getInstance()
-    // Usiamo il repository
+
     private val repository = FireStoreRepository()
 
     private val _user = MutableStateFlow<User?>(null)
@@ -34,7 +34,6 @@ class HomeViewModel : ViewModel() {
     private fun observeUser() {
         val uid = auth.currentUser?.uid ?: return
         viewModelScope.launch {
-            // Il repository gestisce il listener e il parsing
             repository.observeUser(uid).collect { u ->
                 _user.value = u
             }
@@ -50,7 +49,6 @@ class HomeViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 _loading.value = true
-                // Chiamata pulita al repository
                 repository.updateTeamName(uid, name)
 
                 _loading.value = false

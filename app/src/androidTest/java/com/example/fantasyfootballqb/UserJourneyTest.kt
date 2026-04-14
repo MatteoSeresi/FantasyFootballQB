@@ -15,7 +15,7 @@ class UserJourneyTest {
     val composeTestRule = createAndroidComposeRule<MainActivity>()
 
     @Test
-    fun testUserFullJourney_Register_Profile_Delete_LoginFail() {
+    fun testUserFullJourney() {
         val testEmail = "test@test.com"
         val testPass = "password123"
         val testUsername = "UserTest"

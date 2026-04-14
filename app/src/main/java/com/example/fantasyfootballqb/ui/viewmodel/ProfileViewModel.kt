@@ -53,7 +53,7 @@ class ProfileViewModel : ViewModel() {
     fun loadUserData() {
         userObserverJob?.cancel()
         userObserverJob = viewModelScope.launch {
-            // Inizio caricamento
+
             _loading.value = true
 
             val uid = auth.currentUser?.uid
@@ -63,7 +63,6 @@ class ProfileViewModel : ViewModel() {
             }
             _email.value = auth.currentUser?.email
 
-            // Non usiamo try/finally qui perché .collect sospende all'infinito.
             // Spegniamo il loading direttamente dentro il collect appena arrivano i dati.
             repository.observeUser(uid)
                 .catch { e ->
@@ -102,10 +101,10 @@ class ProfileViewModel : ViewModel() {
                 userObserverJob?.cancel()
                 delay(100)
 
-                // 2. Cancelliamo i dati dal DB
+                //  Cancelliamo i dati dal DB
                 repository.deleteUserData(user.uid)
 
-                // 3. Cancelliamo l'utente Auth
+                // Cancelliamo l'utente Auth
                 user.delete().await()
 
                 _success.value = "Account eliminato"

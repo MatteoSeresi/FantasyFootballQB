@@ -31,7 +31,6 @@ fun CalendarScreen(calendarViewModel: CalendarViewModel = viewModel()) {
 
     var selectedWeek by remember { mutableStateOf(weeks.firstOrNull() ?: 1) }
 
-    // dialog state (rimane sulla stessa schermata)
     var showStatsDialog by remember { mutableStateOf(false) }
     var currentGameForDialog by remember { mutableStateOf<Game?>(null) }
     var currentStats by remember { mutableStateOf<List<QBStat>?>(null) }
@@ -50,7 +49,6 @@ fun CalendarScreen(calendarViewModel: CalendarViewModel = viewModel()) {
             .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f))
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            // Weeks row
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -84,7 +82,7 @@ fun CalendarScreen(calendarViewModel: CalendarViewModel = viewModel()) {
                 }
             }
 
-            // Games list for selectedWeek
+            // Lista partite per selectedWeek
             val gamesForWeek = gamesByWeek[selectedWeek] ?: emptyList()
             Card(
                 modifier = Modifier.fillMaxWidth().weight(1f, fill = true),

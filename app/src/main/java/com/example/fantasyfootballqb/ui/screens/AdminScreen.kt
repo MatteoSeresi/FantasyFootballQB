@@ -127,7 +127,7 @@ fun AdminScreen(
                     }
                 }
 
-                // Calcolo week card
+                // Calcolo week
                 Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                     Column(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Calcolo week:", style = MaterialTheme.typography.titleSmall)
@@ -332,7 +332,7 @@ private fun UsersDialog(
         TextButton(onClick = onDismiss) { Text("Chiudi") }
     }, dismissButton = {})
 
-    // Dialog Modifica utente esistente
+    // Dialog Modifica dati utente
     if (editingUser != null) {
         val u = editingUser!!
         var newUsername by remember { mutableStateOf(u.username) }
@@ -383,7 +383,7 @@ private fun UsersDialog(
 
 
 /**
- * ModifyGamesDialog: modifica risultato -> imposta partitaGiocata true se risultato non vuoto
+ * ModifyGamesDialog: modifica risultato partita
  */
 @Composable
 private fun ModifyGamesDialog(
@@ -468,7 +468,7 @@ private fun ModifyGamesDialog(
 
 
 /**
- * ModifyQBsDialog: carica i weekstats per la partita selezionata e mostra i QBs associati.
+ * ModifyQBsDialog: carica i punteggi per i QBs
  */
 @Composable
 private fun ModifyQBsDialog(
@@ -634,17 +634,15 @@ private fun ModifyFormationsDialog(
     onWeekSelected: (Int?) -> Unit,
     onEdit: (UserFormationRow) -> Unit
 ) {
-    // show only non-admin users: map by uid
+
     val nonAdminUsersMap = allUsers.filter { !it.isAdmin }.associateBy { it.uid }
 
-    // local week state inside this dialog (separata dal selectedWeek principale)
     var selectedWeekLocal by remember { mutableStateOf<Int?>(selectedWeek) }
-    // when selectedWeekLocal changes, notify parent so it can load data
+
     LaunchedEffect(selectedWeekLocal) {
         onWeekSelected(selectedWeekLocal)
     }
 
-    // dropdown expanded state
     var expandedWeek by remember { mutableStateOf(false) }
 
     AlertDialog(onDismissRequest = onDismiss, title = {
@@ -722,7 +720,7 @@ private fun EditFormationDialog(
     onDismiss: () -> Unit,
     onSave: (uid: String, week: Int, qbIds: List<String>) -> Unit
 ) {
-    // slots for the 3 QB ids
+    // slots per 3 QB
     val slots = remember { mutableStateListOf<String>() }
     LaunchedEffect(userFormation) {
         slots.clear()
@@ -757,7 +755,6 @@ private fun EditFormationDialog(
                                         expanded = false
                                     })
                                 }
-                                // allow clearing selection per slot
                                 DropdownMenuItem(text = { Text("Rimuovi selezione") }, onClick = {
                                     slots[i] = ""
                                     expanded = false
@@ -784,7 +781,6 @@ private fun EditFormationDialog(
                     errorMsg = "I 3 QB devono essere distinti."
                     return@TextButton
                 }
-                // Passiamo direttamente la variabile 'week' ricevuta in input
                 onSave(userFormation.uid, week, ids)
             }) {
                 Text("Salva")

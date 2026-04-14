@@ -34,6 +34,7 @@ class StatsViewModel : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
+    // Cache locali per evitare di riscaricare inutilmente i dati base ad ogni filtraggio
     private val qbsCache: MutableMap<String, QB> = mutableMapOf()
     private val gamesCache: MutableMap<String, Game> = mutableMapOf()
     private var lastWeekstatsDocs: List<DocumentSnapshot> = emptyList()
@@ -100,6 +101,9 @@ class StatsViewModel : ViewModel() {
         recomputeRows()
     }
 
+    /**
+     * Aggiunge o rimuove una singola squadra dal Set dei filtri attivi.
+     */
     fun toggleTeamSelection(team: String) {
         val cur = _selectedTeams.value.toMutableSet()
         if (cur.contains(team)) cur.remove(team) else cur.add(team)
@@ -117,12 +121,18 @@ class StatsViewModel : ViewModel() {
         recomputeRows()
     }
 
+    /**
+     * Motore principale di aggregazione del ViewModel.
+     * Viene chiamato automaticamente ogni volta che cambiano i dati base o l'utente modifica i filtri
+     * Interroga la cache locale per massimizzare le prestazioni.
+     */
     private fun recomputeRows() {
         try {
             val selWeek = _selectedWeek.value
             val selTeams = _selectedTeams.value
             val q = _searchQuery.value.trim().lowercase()
 
+            // Filtro preliminare per Week
             val filteredDocs = lastWeekstatsDocs.filter { doc ->
                 if (selWeek != null) {
                     val gameId = doc.getString("game_id") ?: doc.getString("gameId") ?: doc.getString("game")
@@ -133,15 +143,18 @@ class StatsViewModel : ViewModel() {
                 true
             }
 
+            // Mappe per sommare i punti
             val nonZeroScores = mutableMapOf<String, MutableList<Double>>()
             val countEntries = mutableMapOf<String, Int>()
 
+            // Estrazione e aggregazione dei punteggi
             filteredDocs.forEach { doc ->
                 val qbId = doc.getString("qb_id") ?: doc.getString("qbId") ?: doc.getString("qb") ?: return@forEach
                 val raw = doc.get("punteggioQB") ?: doc.get("score") // ...altri campi se servono...
                 val value = when(raw) { is Number -> raw.toDouble(); is String -> raw.toDoubleOrNull(); else -> null }
 
                 countEntries[qbId] = (countEntries[qbId] ?: 0) + 1
+                // La logica  considera un giocatore come "giocante" solo se il suo punteggio è strettamente maggiore di zero
                 if (value != null && value > 0.0) {
                     nonZeroScores.getOrPut(qbId) { mutableListOf() }.add(value)
                 }
@@ -149,12 +162,16 @@ class StatsViewModel : ViewModel() {
 
             val candidateQbIds = (countEntries.keys + nonZeroScores.keys).toSet()
 
+            // Costruzione delle Righe, Applicazione Filtri Secondari e Calcolo Matematico
             val calculatedRows = candidateQbIds.mapNotNull { qbId ->
                 val qb = qbsCache[qbId] ?: QB(qbId, qbId, "", "")
 
+                //filtro selezione squadra
                 if (selTeams.isNotEmpty() && !selTeams.contains(qb.squadra)) return@mapNotNull null
+                //filtro ricerca per nome
                 if (q.isNotEmpty() && !qb.nome.lowercase().contains(q)) return@mapNotNull null
 
+                // Calcolo Presenze, Totale Punti e Media
                 val gp = nonZeroScores[qbId]?.size ?: 0
                 val ptot = nonZeroScores[qbId]?.sum() ?: 0.0
                 val ppg = if (gp > 0) ptot / gp else 0.0

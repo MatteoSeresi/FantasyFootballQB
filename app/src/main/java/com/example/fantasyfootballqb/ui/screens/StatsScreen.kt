@@ -77,7 +77,7 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     // header row -> cambia se siamo in modalità week-filter
                     if (selectedWeek != null) {
-                        // Week filter active: show Giocatore | Team | Punteggio
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -170,7 +170,6 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                                 val background = if (index % 2 == 0) MaterialTheme.colorScheme.surface.copy(alpha = 0.12f) else Color.Transparent
 
                                 if (selectedWeek != null) {
-                                    // week-filtered row: Giocatore | Team | Punteggio
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -192,7 +191,7 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
-                                        // Punteggio: se 0 mostra "-" altrimenti valore (intero) - centrato
+                                        // Punteggio: se 0 mostra "-" altrimenti valore
                                         val puntText = if (r.ptot == 0.0) "-" else r.ptot.toInt().toString()
                                         Box(modifier = Modifier.weight(0.20f), contentAlignment = Alignment.Center) {
                                             Text(puntText, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -222,18 +221,18 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                                             overflow = TextOverflow.Ellipsis
                                         )
 
-                                        // GP centered
+                                        // GP
                                         Box(modifier = Modifier.weight(0.10f), contentAlignment = Alignment.Center) {
                                             Text(r.gp.toString(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         }
 
-                                        // PTOT centered
+                                        // PTOT
                                         val ptotText = if (r.ptot == 0.0) "-" else r.ptot.toInt().toString()
                                         Box(modifier = Modifier.weight(0.15f), contentAlignment = Alignment.Center) {
                                             Text(ptotText, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         }
 
-                                        // PPG centered
+                                        // PPG
                                         val ppgText = if (r.ptot == 0.0) "-" else String.format("%.1f", r.ppg)
                                         Box(modifier = Modifier.weight(0.13f), contentAlignment = Alignment.Center) {
                                             Text(ppgText, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -259,7 +258,6 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
             LaunchedEffect(error) { vm.clearError() }
         }
 
-        // --- Bottom sheet for filters (with 4x8 team grid) ---
         if (showFilterSheet) {
             ModalBottomSheet(
                 onDismissRequest = { showFilterSheet = false },
@@ -321,7 +319,6 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
     }
 }
 
-/* ---------------- helpers (unchanged) ---------------- */
 
 private fun buildDefaultTeamList(existing: List<String>): List<String> {
     val result = existing.toMutableList()

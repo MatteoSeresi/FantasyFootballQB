@@ -23,6 +23,8 @@ import com.example.fantasyfootballqb.components.AppTopBar
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Inizializza l'SDK di Firebase prima che venga renderizzata qualsiasi UI.
+        // Necessario per permettere all'Auth e al Firestore di funzionare correttamente fin dal primo istante.
         FirebaseApp.initializeApp(this)
 
         setContent {
@@ -41,7 +43,6 @@ fun FantasyApp() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    // schermate dove mostrare la bottom bar / top bar
     val visibleRoutes = listOf(
         Routes.Home,
         Routes.Team,

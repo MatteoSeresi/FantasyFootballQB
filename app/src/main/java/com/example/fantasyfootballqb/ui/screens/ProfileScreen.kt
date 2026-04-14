@@ -70,7 +70,7 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = viewModel()) {
                     Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Profilo", style = MaterialTheme.typography.titleMedium)
 
-                        // Email (Sola lettura per semplicità)
+                        // Email
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Email", style = MaterialTheme.typography.bodySmall)

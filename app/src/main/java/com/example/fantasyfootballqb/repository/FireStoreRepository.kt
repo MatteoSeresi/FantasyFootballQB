@@ -171,9 +171,9 @@ class FireStoreRepository {
         return snapshot.documents.mapNotNull { it.toWeekStats() }
     }
 
-    // --- ADMIN FUNCTIONS ---
+    // --- FUNZIONI ADMIN  ---
 
-    // Osserva TUTTI gli utenti (per la lista Admin)
+    // Osserva tutti gli utenti
     fun observeAllUsers(): Flow<List<User>> = callbackFlow {
         val listener = db.collection("users")
             .addSnapshotListener { snapshot, error ->
@@ -187,7 +187,7 @@ class FireStoreRepository {
         awaitClose { listener.remove() }
     }
 
-    // Aggiorna dati utente (Admin override)
+    // Aggiorna dati utente
     suspend fun updateAdminUserData(uid: String, data: Map<String, Any?>) {
         db.collection("users").document(uid).set(data, SetOptions.merge()).await()
     }
@@ -247,7 +247,7 @@ class FireStoreRepository {
         batch.commit().await()
     }
 
-    // Aggiorna formazione utente (Admin override)
+    // Aggiorna formazione utente
     suspend fun updateUserFormationData(uid: String, week: Int, data: Map<String, Any?>) {
         db.collection("users")
             .document(uid)
@@ -285,19 +285,18 @@ class FireStoreRepository {
 
     // Elimina completamente i dati utente (Formazioni + Documento User)
     suspend fun deleteUserData(uid: String) {
-        // 1. Prendi tutte le formazioni
+        // Prendi tutte le formazioni
         val formationsRef = db.collection("users").document(uid).collection("formations")
         val snapshots = formationsRef.get().await()
 
-        // 2. Cancellazione in Batch per efficienza e atomicità
+        // Cancellazione in Batch per efficienza e atomicità
         val batch = db.batch()
         for (doc in snapshots) {
             batch.delete(doc.reference)
         }
-        // 3. Cancella utente
+        // Cancella utente
         batch.delete(db.collection("users").document(uid))
 
-        // Esegui tutto
         batch.commit().await()
     }
 }

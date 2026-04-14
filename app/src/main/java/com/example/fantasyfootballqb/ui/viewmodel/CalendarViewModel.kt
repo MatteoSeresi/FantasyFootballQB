@@ -58,7 +58,7 @@ class CalendarViewModel : ViewModel() {
         if (!played) return emptyList()
 
         return try {
-            // Scarichiamo le stats pulite (WeekStats) dal repository
+            // Scarichiamo le stats pulite (WeekStats)
             val weekStats = repository.getWeekStatsForGame(gameId)
 
             val result = mutableListOf<QBStat>()

@@ -65,7 +65,7 @@ fun TeamScreen(
         vm.observeWeekCalculated(selectedWeek)
     }
 
-    // when formation changes populate slots for display
+
     LaunchedEffect(formationQBs) {
         if (formationQBs.isNotEmpty()) {
             selectedSlots = formationQBs.toMutableList().let { list ->

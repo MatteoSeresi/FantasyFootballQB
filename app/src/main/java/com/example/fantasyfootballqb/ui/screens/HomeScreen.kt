@@ -137,7 +137,7 @@ fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {
                     }
                 }
             } else {
-                // visualizza nome team esistente con bottone per modificare (apre dialog)
+                // visualizza nome team esistente con bottone per modificare
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
@@ -206,7 +206,6 @@ fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {
             }
         }
 
-        // Loading indicator (centrato)
         if (loading) {
             Box(
                 modifier = Modifier
@@ -218,7 +217,6 @@ fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {
             }
         }
 
-        // SnackbarHost (sopra la bottom bar)
         Box(
             modifier = Modifier
                 .fillMaxSize()
